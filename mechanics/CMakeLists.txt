@@ -80,6 +80,7 @@ SET( SRCS
     src/CBConstitutiveModel/CBConstitutiveModelMooneyRivlin.cpp
     src/CBData/CBDataCtrl.cpp
     src/CBData/CBDataFromFile.cpp
+    src/CBData/CBDataFromPressureFile.cpp
     src/CBData/CBDataFromFunction.cpp
     src/CBData/CBDataPerMaterial.cpp
     src/CBData/CBFileManager.cpp
@@ -101,6 +102,7 @@ SET( SRCS
     src/CBTensionModel/CBTensionModelBestel.cpp
     src/CBTensionModel/CBTensionModelLand17.cpp
     src/CBTensionModel/CBTensionModelTanH.cpp
+    src/CBTensionModel/CBTensionEstimator.cpp
     src/CBFormulation/CBFormulationTotalLagrangian.cpp
     src/CBMaterial/CBMaterial.cpp
     src/CBMaterial/CBMaterialFactory.cpp
@@ -113,6 +115,7 @@ SET( SRCS
     src/CBSolver/CBSolverEquilibrium.cpp
     src/CBSolver/CBSolverNewmarkBeta.cpp
     src/CBSolverPlugins/CBApplyPressure.cpp
+    src/CBSolverPlugins/CBApplyPressureFromFile.cpp
     src/CBSolverPlugins/CBApplyPressureFromFunction.cpp
     src/CBSolverPlugins/CBApplyPressureFromFunctionNodeExport.cpp
     src/CBSolverPlugins/CBReferenceRecovery.cpp
