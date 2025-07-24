@@ -54,7 +54,10 @@ const std::vector<CBElement*>& CBElementAdapter::GetElementVector() {
 
 void CBElementAdapter::LinkActiveStress(Vec activeStressTensor, PetscInt numActiveStressTensorComponents, PetscInt* activeStressTensorComponentsIndices)
 {
+    std::cout << "2.0: " << activeStressTensor << std::endl;
+    std::cout << "activeStressTensor_: " << activeStressTensor_ << std::endl;
     activeStressTensor_                  = activeStressTensor;
+    std::cout << "2.5: " << activeStressTensor << std::endl;
     numActiveStressTensorComponents_     = numActiveStressTensorComponents;
     activeStressTensorComponentsIndices_ = activeStressTensorComponentsIndices;
     PetscInt dummy;
