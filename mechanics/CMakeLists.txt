@@ -30,9 +30,11 @@ find_package(MPI REQUIRED)
 
 include_directories(
     ./src/CBCavity
+    ./src/CBCirculatorySystemModel
     ./src/CBConstitutiveModel
     ./src/CBData
     ./src/CBElement
+    ./src/CBExtension
     ./src/CBTensionModel
     ./src/CBFormulation
     ./src/CBMaterial
@@ -61,7 +63,8 @@ kaBuildLinkLibrariesString(MPI_LIBRARIES_STRING "${MPI_LIBRARIES}")
 
 SET( SRCS
     src/CardioMechanics/CardioMechanics.cpp
-    src/CBCavity/CBCircLeftHeart.cpp    
+    src/CBCavity/CBCavity.cpp
+    src/CBCavity/CBCircLeftHeart.cpp
     src/CBCavity/CBCircOneVentricle.cpp
     src/CBCavity/CBCircIsovolumetric.cpp
     src/CBCavity/CBCircTwoVentricles.cpp
@@ -71,6 +74,8 @@ SET( SRCS
     src/CBCavity/CBCircWindkessel3.cpp
     src/CBCavity/CBCircWindkessel3AsymptoticPressure.cpp
     src/CBCavity/CBCirculationCavity.cpp
+    src/CBCirculatorySystemModel/CBCirculatorySystemModelFromFile.cpp
+    src/CBCirculatorySystemModel/CBPressureVolumeData.cpp
     src/CBConstitutiveModel/CBConstitutiveModel.cpp
     src/CBConstitutiveModel/CBConstitutiveModelFactory.cpp
     src/CBConstitutiveModel/CBConstitutiveModelGuccione.cpp
@@ -78,6 +83,7 @@ SET( SRCS
     src/CBConstitutiveModel/CBConstitutiveModelNeoHooke.cpp
     src/CBConstitutiveModel/CBConstitutiveModelHolzapfel.cpp
     src/CBConstitutiveModel/CBConstitutiveModelMooneyRivlin.cpp
+    src/CBConstitutiveModel/CBConstitutiveModelCosta.cpp
     src/CBData/CBDataCtrl.cpp
     src/CBData/CBDataFromFile.cpp
     src/CBData/CBDataFromPressureFile.cpp
@@ -96,6 +102,12 @@ SET( SRCS
     src/CBElement/CBElementSolidT4.cpp
     src/CBElement/CBElementSurfaceT3.cpp
     src/CBElement/CBElementSurfaceT6.cpp
+    src/CBElement/CBElementSolidT10RI.cpp
+    src/CBElement/CBElementSolidT10RIT4.cpp
+    src/CBElement/CBElementSolidT10T4.cpp
+    src/CBElement/CBElementSolidT10TH.cpp
+    src/CBExtension/CBExtension.cpp
+    src/CBExtension/CBExtensionExperimental.cpp
     src/CBTensionModel/CBTensionFactory.cpp
     src/CBTensionModel/CBTensionFromFunction.cpp
     src/CBTensionModel/CBTensionModelLumens.cpp
@@ -114,6 +126,9 @@ SET( SRCS
     src/CBSolver/CBTiming.cpp
     src/CBSolver/CBSolverEquilibrium.cpp
     src/CBSolver/CBSolverNewmarkBeta.cpp
+    src/CBSolver/CBSolverActiveStressEstimator.cpp
+    src/CBSolver/CBSolverActiveStressTensorEstimator.cpp
+    src/CBSolver/CBSolverActiveStressEstimatorNewmarkBeta.cpp
     src/CBSolverPlugins/CBApplyPressure.cpp
     src/CBSolverPlugins/CBApplyPressureFromFile.cpp
     src/CBSolverPlugins/CBApplyPressureFromFunction.cpp
@@ -127,6 +142,7 @@ SET( SRCS
     src/CBSolverPlugins/CBSolverPluginCavities.cpp
     src/CBSolverPlugins/CBSolverPluginFactory.cpp
     src/CBSolverPlugins/CBacCELLerate.cpp
+    src/CBSolverPlugins/CBDetermineNodalForces.cpp
     src/CBStatus/CBStatus.cpp
     src/DCTK/DCCtrl.cpp
     src/DCTK/DCCtrlPETSc.cpp
