@@ -76,6 +76,8 @@ SET( SRCS
     src/CBCavity/CBCirculationCavity.cpp
     src/CBCirculatorySystemModel/CBCirculatorySystemModelFromFile.cpp
     src/CBCirculatorySystemModel/CBPressureVolumeData.cpp
+    src/CBCirculatorySystemModel/CBCirculatorySystemModel.cpp
+    src/CBCirculatorySystemModel/CBCirculatorySystemModelFactory.cpp
     src/CBConstitutiveModel/CBConstitutiveModel.cpp
     src/CBConstitutiveModel/CBConstitutiveModelFactory.cpp
     src/CBConstitutiveModel/CBConstitutiveModelGuccione.cpp
