@@ -18,6 +18,7 @@
 #include "CBSolver.h"
 #include "CBSolverNewmarkBeta.h"
 #include "CBSolverEquilibrium.h"
+#include "CBExtension.h"
 
 
 void CardioMechanics::Init1() {

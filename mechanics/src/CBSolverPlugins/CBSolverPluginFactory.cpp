@@ -26,6 +26,9 @@
 #include "CBRobinBoundaryGeneral.h"
 #include "CBacCELLerate.h"
 
+// added for active stress estimation
+#include "CBDetermineNodalForces.h"
+
 class CBSolverPlugin;
 
 void CBSolverPluginFactory::LoadAllPlugins(std::vector<CBSolverPlugin *> &plugins, ParameterMap *parameters) {
@@ -89,6 +92,15 @@ void CBSolverPluginFactory::LoadAllPlugins(std::vector<CBSolverPlugin *> &plugin
         solverPlugin->SetParameters(parameters);
         plugins_.push_back(solverPlugin);
     }
+
+    // added for active stress estimation
+    if (parameters->Get<bool>("Solver.Plugins.CBDetermineNodalForces", false)) {
+        CBSolverPlugin *solverPlugin = new CBDetermineNodalForces();
+        solverPlugin->SetParameters(parameters);
+        plugins_.push_back(solverPlugin);
+    }
+
+
     
     plugins = plugins_;
 } // CBSolverPluginFactory::LoadAllPlugins
