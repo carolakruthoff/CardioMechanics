@@ -74,6 +74,7 @@ SET( SRCS
     src/CBCavity/CBCircWindkessel3.cpp
     src/CBCavity/CBCircWindkessel3AsymptoticPressure.cpp
     src/CBCavity/CBCirculationCavity.cpp
+    src/CBCavity/CBWindkessel3.cpp
     src/CBCirculatorySystemModel/CBCirculatorySystemModelFromFile.cpp
     src/CBCirculatorySystemModel/CBPressureVolumeData.cpp
     src/CBCirculatorySystemModel/CBCirculatorySystemModel.cpp
@@ -114,6 +115,7 @@ SET( SRCS
     src/CBTensionModel/CBTensionFromFunction.cpp
     src/CBTensionModel/CBTensionModelLumens.cpp
     src/CBTensionModel/CBTensionModelBestel.cpp
+    src/CBTensionModel/CBTensionModelExternal.cpp
     src/CBTensionModel/CBTensionModelLand17.cpp
     src/CBTensionModel/CBTensionModelTanH.cpp
     src/CBTensionModel/CBTensionEstimator.cpp
@@ -124,6 +126,7 @@ SET( SRCS
     src/CBModel/CBModelExporter.cpp
     src/CBModel/CBModelExporterVTK.cpp
     src/CBModel/CBModelLoaderTetgen.cpp
+    src/CBModel/CBModelLoaderVTK.cpp
     src/CBSolver/CBSolver.cpp
     src/CBSolver/CBTiming.cpp
     src/CBSolver/CBSolverEquilibrium.cpp
@@ -138,6 +141,8 @@ SET( SRCS
     src/CBSolverPlugins/CBReferenceRecovery.cpp
     src/CBSolverPlugins/CBCirculation.cpp
     src/CBSolverPlugins/CBContactHandling.cpp
+    src/CBSolverPlugins/CBRegistrationICS.cpp
+    src/CBSolverPlugins/CBRegistrationNonRigidICP.cpp
     src/CBSolverPlugins/CBRobinBoundary.cpp
     src/CBSolverPlugins/CBRobinBoundaryGeneral.cpp
     src/CBSolverPlugins/CBLoadUnloadedState.cpp
