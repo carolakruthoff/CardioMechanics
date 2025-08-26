@@ -27,6 +27,9 @@ public:
     virtual ~CBFormulationTotalLagrangian(){}
     CBStatus CalcNodalForces();
     CBStatus CalcNodalForcesJacobian();
+    CBStatus CalcStiffnessMatrix();
+    CBStatus CalcNodalForcesActiveStressJacobian();
+    CBStatus CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian();
 protected:
 private:
     typedef CBFormulation   Base;

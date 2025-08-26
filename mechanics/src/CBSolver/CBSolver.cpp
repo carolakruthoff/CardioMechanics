@@ -14,11 +14,13 @@
 #include "CBSolver.h"
 
 #include "CBFileManager.h"
+#include "CBExtension.h"
 #include "CBElementSurfaceT6.h"
 #include "CBElementSurfaceT3.h"
 #include "CBRuntimeEstimator.h"
 #include "CBModelLoader.h"
 #include "CBModelLoaderTetgen.h"
+#include "CBModelLoaderVTK.h"
 #include <iostream>
 #include <fstream>
 
@@ -1281,6 +1283,8 @@ void CBSolver::InitLoadedState() {
     
     if (format == "Tetgen")
         modelLoader = new CBModelLoaderTetgen(parameters_); // deleted in deconstructor
+    else  if (format == "VTK")
+        modelLoader = new CBModelLoaderVTK(parameters_);
     else
         throw std::runtime_error("Mesh Format: " + format + " is unkown !");
     LoadedModel_ = modelLoader->Load("MeshLoadedState");

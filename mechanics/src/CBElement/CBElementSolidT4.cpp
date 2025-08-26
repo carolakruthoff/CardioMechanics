@@ -144,7 +144,8 @@ void CBElementSolidT4::CalcDeformationTensorWithLocalBasis(const TFloat *nodesCo
 }
 
 // TODO: remove activeStress from function arguments, communication should now rather happen over the TensionModel (e.g. CBFileTension)
-CBStatus CBElementSolidT4::CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, TFloat *forces) {
+CBStatus CBElementSolidT4::CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, Matrix3<TFloat> *activeStress, TFloat *forces) {
+// ad Matrix3<TFloat> *activeStress from Eki's version
     CBStatus rc;
     
     Matrix3<TFloat> deformationTensor;
@@ -168,7 +169,13 @@ CBStatus CBElementSolidT4::CalcNodalForcesHelperFunction(const TFloat *nodesCoor
     TFloat time = adapter_->GetSolver()->GetTiming().GetCurrentTime();
     
     // compute active stress
-    as = Base::tensionModel_->CalcActiveStress(deformationTensor, time);
+    //from Eki's version
+    if (this->GetMaterial()->GetTensionName() == "ExternalQuadPoints") {
+        as = Base::tensionModel_->CalcActiveStressAtQuadraturePoint(deformationTensor, time, 0);
+    } else {
+        as = Base::tensionModel_->CalcActiveStress(deformationTensor, time); //only line not from Eki's version
+    }
+    // end from Eki's version
     stress += as;
     
     // convert PK2 stress into nominal stress with respect to the local coordinate system aligned with the fibres
@@ -222,8 +229,10 @@ CBStatus CBElementSolidT4::CalcNodalForces() {
     Ancestor::adapter_->GetNodesComponentsBoundaryConditions(12, nodesCoordsIndices, boundaryConditions);
     
     TFloat forces[12];
-    
-    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, forces);
+    //from Eki's version
+    Matrix3<TFloat> a;
+
+    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, forces);
     
     Base::adapter_->AddNodalForcesComponents(12, nodesCoordsIndices, forces);
     return rc;
@@ -291,6 +300,98 @@ CBStatus CBElementSolidT4::GetCauchyStress(Matrix3<TFloat> &cauchyStress) {
     return rc;
 }
 
+//from Eki's version
+CBStatus CBElementSolidT4::CalcStiffnessMatrix() {
+  // This method calculates the element stiffness matrix Ke = V * Be_T * E * Be
+  //
+  TFloat nodesCoords[12];
+  TInt  nodesCoordsIndices[12];
+  TInt  indices[12];
+  bool     boundaryConditions[12];
+  double Em = Base::parameters_->Get<double>("Solver.NewmarkBeta.YoungModulus", 5e4); // Young Modulus of tissue in N/m^2 https://link.springer.com/article/10.1007/BF02477722
+  double nu = Base::parameters_->Get<double>("Solver.NewmarkBeta.PoissonRatio", 0.4999); // Poisson ratio - Truly imcompressibe -> nu = 0.5
+
+  GetNodesCoordsIndices(nodesCoordsIndices);
+  Base::adapter_->GetNodesCoords(12, nodesCoordsIndices, nodesCoords);
+  Base::adapter_->GetNodesComponentsBoundaryConditions(12, nodesCoordsIndices, boundaryConditions);
+  memcpy(indices, nodesCoordsIndices, 12*sizeof(TInt));
+
+  // Applying boundary conditions
+  for (int i = 0; i < 12; i++) {
+    if (boundaryConditions[i]) {
+      indices[i] = -1; // negative indices will be ignored by MatSetValues
+      continue;
+    }
+  }
+
+  // 6x6 elasticity matrix E (techinically for an isotropic material)
+  double EMat[36] = {
+    1.-nu, nu, nu, 0, 0, 0,
+    nu, 1.-nu, nu, 0, 0, 0,
+    nu, nu, 1.-nu, 0, 0, 0,
+    0, 0, 0, 0.5-nu, 0, 0,
+    0, 0, 0, 0, 0.5-nu, 0,
+    0, 0, 0, 0, 0, 0.5-nu
+  };
+  for (int i = 0; i < 6*6; i++) {
+    EMat[i] *= Em / ((1. + nu)*(1. - 2. * nu));
+  }
+
+  // matrix relation between strains and nodal displacements e = Be*u_e
+  // Note that in this implemenation Be is detJ*Be and not Be. Correct scaling is restored later.
+  double Be_T[12][6] = {}; // initialize transposed Be matrix for later
+  double Be[6][12] = {
+    {dNdX_[0], 0, 0, dNdX_[3], 0, 0, dNdX_[6], 0, 0, dNdX_[9], 0, 0},
+    {0, dNdX_[1], 0, 0, dNdX_[4], 0, 0, dNdX_[7], 0, 0, dNdX_[10], 0},
+    {0, 0, dNdX_[2], 0, 0, dNdX_[5], 0, 0, dNdX_[8], 0, 0, dNdX_[11]},
+    {dNdX_[1], dNdX_[0], 0, dNdX_[4], dNdX_[3], 0, dNdX_[7], dNdX_[6], 0, dNdX_[10], dNdX_[9], 0},
+    {0, dNdX_[2], dNdX_[1], 0, dNdX_[5], dNdX_[4], 0, dNdX_[8], dNdX_[7], 0, dNdX_[11], dNdX_[10]},
+    {dNdX_[2], 0, dNdX_[0], dNdX_[5], 0, dNdX_[3], dNdX_[8], 0, dNdX_[6], dNdX_[11], 0, dNdX_[9]}
+  };
+
+  // Scale Be with detJ_
+  for (int i = 0; i < 6; i++) {
+    for (int j = 0; j < 12; j++) {
+      Be[i][j] *= detJ_;
+
+      // transpose matrix
+      Be_T[j][i] = Be[i][j];
+    }
+  }
+
+  // Do Be_T * E
+  double BTE[12][6] = {};
+  for (int i = 0; i < 12; i++) {
+    for (int j = 0; j < 6; j++) {
+      double sum = 0.;
+      for (int k = 0; k < 6; k++) {
+        sum += Be_T[i][k] * EMat[6*k+j];
+      }
+      BTE[i][j] = sum;
+    }
+  }
+
+  TFloat stiffnessMatrixEntries[144];
+
+  // Assemble element stiffness matrix Ke
+  // Do V * Be_T * E * Be
+  for (int i = 0; i < 12; i++) {
+    for (int j = 0; j < 12; j++) {
+      double sum = 0;
+      for (int k = 0; k < 6; k++) {
+        sum = BTE[i][k] * Be[k][j];
+      }
+
+      // restore scaling
+      stiffnessMatrixEntries[12*i+j] = sum / (6*detJ_);
+    }
+  }
+
+  Base::adapter_->SetStiffnessMatrixEntries(12, indices, 12, indices, stiffnessMatrixEntries);
+  return CBStatus::SUCCESS;
+} // CBElementSolidT4::CalcStiffnessMatrix
+// end from Eki's version
+
 CBStatus CBElementSolidT4::CalcNodalForcesJacobian() {
     CBStatus rc;
     TFloat   nodesCoords[12];
@@ -301,6 +402,9 @@ CBStatus CBElementSolidT4::CalcNodalForcesJacobian() {
     TFloat   f1[12];
     TFloat   f2[12];
     TFloat   forcesJacobian[12*12]; // may be initialized to zero, but not necessary, as entries for fixated nodes are not copied (negative indices)
+
+    //from Eki's version
+    Matrix3<TFloat> a;
     
     GetNodesCoordsIndices(nodesCoordsIndices);
     Base::adapter_->GetNodesComponentsBoundaryConditions(12, nodesCoordsIndices, boundaryConditions);
@@ -328,12 +432,12 @@ CBStatus CBElementSolidT4::CalcNodalForcesJacobian() {
         nodeCoord = nodesCoords[i];
         
         nodesCoords[i] = nodeCoord + epsilon;
-        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, f1);
+        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, f1);
         if (rc != CBStatus::SUCCESS)
             return rc;
         
         nodesCoords[i] = nodeCoord - epsilon;
-        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, f2);
+        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, f2);
         
         nodesCoords[i] = nodeCoord;
         

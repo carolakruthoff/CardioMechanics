@@ -153,19 +153,29 @@ public:
     void RelaxElementsAndBasesByIndex(TInt index);
     
     CBMaterial                           *GetMaterial(int i) {return materials_[i]; }
-    
+
+    void                                  ApplyPreprocessing();
     const std::vector<CBElement *>      & GetElementVector();
     const std::vector<CBElementSolid *> & GetSolidElementVector();
     const std::vector<CBSolverPlugin *> & GetPlugInVector();
+
+#ifdef EXPERIMENTAL
+    friend void CBExtensionExperimentalSolverPlugin(CBSolver *solver);
+#endif  // ifdef EXPERIMENTAL
     
     virtual void ExportSNESMatrix(TFloat time) {}
     
     Vector3fVector GetCurrentNodeCoordinates();
     void           SetCurrentNodeCoordinates(Vector3fVector newNodes);
+
+#ifdef CONTRIBUTIONS
+    friend void CBExtensionContributionSolverPlugin(CBSolver *solver);
+#endif  // ifdef CONTRIBUTIONS
     
 protected:
     virtual void InitFormulation();
     virtual void InitParameters();
+    void         InitPreprocessingPlugins();
     virtual void InitElements();
     virtual void InitNodes(CBModel *fromModel = nullptr, bool isRefNode = true);
     virtual void InitNodesComponentsBoundaryConditions();

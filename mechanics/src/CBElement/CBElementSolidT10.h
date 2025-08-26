@@ -45,8 +45,11 @@ public:
     CBStatus SetNodalForcesJacobianToZeroIfElementIsDefect();
     virtual CBStatus CalcNodalForcesWithoutActiveStress();
     virtual CBStatus CalcNodalForcesAndJacobian();
+    CBStatus CalcNodalForcesActiveStressJacobian(int elementIndex = -1);
+    CBStatus CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian(int elementIndex = -1);
     CBStatus CalcConsistentMassMatrix();
     CBStatus CalcLumpedMassMatrix();
+    CBStatus CalcStiffnessMatrix();
     CBStatus GetDeformationTensor(Matrix3<TFloat>& f);
     CBStatus GetDeformationTensorAtQuadraturePoints(Matrix3<TFloat>* f);
     CBStatus GetCauchyStress(Matrix3<TFloat>& cauchyStress);
@@ -70,7 +73,7 @@ protected:
     virtual void CalcDeformationTensorsAtCentroidWithLocalBasis(const TFloat* nodesCoords, Matrix3<TFloat>& deformationTensors);
     virtual void CalcDeformationTensorsAtCentroidWithLocalBasisWithT4ShapeFunctions(const TFloat* nodesCoords, Matrix3<TFloat>& deformationTensors);
     void GetNodesCoordsIndices(TInt* nodesCoordsIndices);
-    virtual CBStatus CalcNodalForcesHelperFunction(const TFloat* nodesCoords, const bool* boundaryConditions, TFloat* forces);
+    virtual CBStatus CalcNodalForcesHelperFunction(const TFloat* nodesCoords, const bool* boundaryConditions, const Matrix3<TFloat>* epsilon, TFloat* forces);
     
     std::array<TInt, 10> nodesIndices_;
     std::array<TFloat, 150> dNdXW_;  // Derivatives of the shape functions at the 4 quadrature points + center

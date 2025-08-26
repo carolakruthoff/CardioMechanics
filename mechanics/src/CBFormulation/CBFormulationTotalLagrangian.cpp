@@ -38,3 +38,41 @@ CBStatus CBFormulationTotalLagrangian::CalcNodalForcesJacobian()
     }
     return(rc);
 }
+
+// added from Eki's version
+CBStatus CBFormulationTotalLagrangian::CalcStiffnessMatrix()
+{
+    CBStatus rc=CBStatus::NOTHING_DONE;
+    for(auto& it : Base::solver_->GetSolidElementVector())
+    {
+        rc = it->CalcStiffnessMatrix();
+        if(rc != CBStatus::SUCCESS)
+            return(rc);
+    }
+    return(rc);
+}
+
+
+CBStatus CBFormulationTotalLagrangian::CalcNodalForcesActiveStressJacobian()
+{
+    CBStatus rc=CBStatus::NOTHING_DONE;
+    for(auto& it : Base::solver_->GetSolidElementVector())
+    {
+        rc = it->CalcNodalForcesActiveStressJacobian();
+        if(rc != CBStatus::SUCCESS)
+            return(rc);
+    }
+    return(rc);
+}
+
+CBStatus CBFormulationTotalLagrangian::CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian()
+{
+    CBStatus rc=CBStatus::NOTHING_DONE;
+    for(auto& it : Base::solver_->GetSolidElementVector())
+    {
+        rc = it->CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian();
+        if(rc != CBStatus::SUCCESS)
+            return(rc);
+    }
+    return(rc);
+}

@@ -34,6 +34,10 @@ public:
     virtual ~CBFormulation(){}
     virtual CBStatus  CalcNodalForces() = 0;
     virtual CBStatus  CalcNodalForcesJacobian() = 0;
+    // added from Eki's version
+    virtual CBStatus  CalcNodalForcesActiveStressJacobian() { std::runtime_error("Error: Function CBFormulation::CalcNodalForcesActiveStressJacobian() is not implemented."); return CBStatus::FAILED; }
+    virtual CBStatus  CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian() { std::runtime_error("Error: Function CBFormulation::CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian() is not implemented."); return CBStatus::FAILED; }
+    virtual CBStatus  CalcStiffnessMatrix() = 0;
 protected:
     CBSolver* solver_;    // No ownership
 private:

@@ -393,33 +393,140 @@ CBStatus CBElementSolidT10::CalcConsistentMassMatrix() {
     return CBStatus::SUCCESS;
 } // CBElementSolidT10::CalcConsistentMassMatrix
 
-CBStatus CBElementSolidT10::CalcLumpedMassMatrix() {
-    TFloat nodesCoords[30];
-    bool   boundaryConditions[30];
-    TInt   nodesCoordsIndices[30];
-    
-    for (unsigned int i = 0; i < 10; i++) {
-        nodesCoordsIndices[3*i]   = 3*nodesIndices_[i];
-        nodesCoordsIndices[3*i+1] = 3*nodesIndices_[i]+1;
-        nodesCoordsIndices[3*i+2] = 3*nodesIndices_[i]+2;
+// from eki's version
+CBStatus CBElementSolidT10::CalcStiffnessMatrix() {
+  TFloat nodesCoords[30];
+  bool   boundaryConditions[30];
+  TInt   nodesCoordsIndices[30];
+
+  for (unsigned int i = 0; i < 10; i++) {
+    nodesCoordsIndices[3*i]   = 3*nodesIndices_[i];
+    nodesCoordsIndices[3*i+1] = 3*nodesIndices_[i]+1;
+    nodesCoordsIndices[3*i+2] = 3*nodesIndices_[i]+2;
+  }
+
+  Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
+  Base::adapter_->GetNodesComponentsBoundaryConditions(30, nodesCoordsIndices, boundaryConditions);
+
+  // Note that in the Boulder script 'Be' is J*B and not B – here it is NOT!
+  TFloat factor = (0.25*detJ_/6.0);
+  TFloat nu = Base::parameters_->Get<double>("Solver.NewmarkBeta.PoissonRatio", 0.4999); // Poisson ratio - Truly imcompressibe -> nu = 0.5
+  TFloat Em = Base::parameters_->Get<double>("Solver.NewmarkBeta.YoungModulus", 5e4); // Young Modulus of tissue in N/m^2 https://link.springer.com/article/10.1007/BF02477722
+  TFloat Emat[6*6] = {1-nu,   nu,   nu,      0,      0,      0,
+                      nu, 1-nu,   nu,      0,      0,      0,
+                      nu,   nu, 1-nu,      0,      0,      0,
+                      0,    0,    0, 0.5-nu,      0,      0,
+                      0,    0,    0,      0, 0.5-nu,      0,
+                      0,    0,    0,      0,      0, 0.5-nu};
+
+  for (int i = 0; i < 6*6; i++) Emat[i] *= Em/ ((1+nu) * (1-2*nu));
+  TFloat K[30*30] = {0};
+  TFloat Sum;
+  TFloat temp[6*30] = {0};
+  std::array<TFloat, 120> dNdXt;
+#warning The following should be somewhat optimized ....
+  CalcShapeFunctionDerivatives((5+3*sqrt(5))/20, (5-sqrt(5))/20, (5-sqrt(5))/20, (5-sqrt(5))/20, &(dNdXt[0]),  0);
+  CalcShapeFunctionDerivatives((5-sqrt(5))/20, (5+3*sqrt(5))/20, (5-sqrt(5))/20, (5-sqrt(5))/20, &(dNdXt[30]), 0);
+  CalcShapeFunctionDerivatives((5-sqrt(5))/20, (5-sqrt(5))/20, (5+3*sqrt(5))/20, (5-sqrt(5))/20, &(dNdXt[60]), 0);
+  CalcShapeFunctionDerivatives((5-sqrt(5))/20, (5-sqrt(5))/20, (5-sqrt(5))/20, (5+3*sqrt(5))/20, &(dNdXt[90]), 0);
+
+
+  for (int n = 0; n < 4; n++) {
+    TFloat *dNdX = &dNdXt[30*n];
+
+    // This is B not Be - different to Boulder script
+    TFloat B[6*
+             30] =
+    {dNdX[0],       0,       0, dNdX[3], 0, 0, dNdX[6], 0, 0, dNdX[9], 0, 0, dNdX[12], 0, 0, dNdX[15], 0, 0, dNdX[18],
+     0, 0, dNdX[21], 0, 0, dNdX[24], 0, 0, dNdX[27], 0, 0,
+     0, dNdX[1],       0, 0, dNdX[4], 0, 0, dNdX[7], 0, 0, dNdX[10], 0, 0, dNdX[13], 0, 0, dNdX[16], 0,
+     0, dNdX[19], 0, 0, dNdX[22], 0, 0, dNdX[25], 0, 0, dNdX[28], 0,
+     0, 0, dNdX[2], 0, 0, dNdX[5], 0, 0, dNdX[8], 0, 0, dNdX[11], 0, 0, dNdX[14], 0, 0, dNdX[17], 0, 0,
+     dNdX[20], 0, 0, dNdX[23], 0, 0, dNdX[26], 0, 0, dNdX[29],
+     dNdX[1], dNdX[0], 0, dNdX[4], dNdX[3], 0, dNdX[7], dNdX[6], 0, dNdX[10], dNdX[9], 0, dNdX[13],
+     dNdX[12], 0, dNdX[16], dNdX[15], 0, dNdX[19], dNdX[18], 0, dNdX[22], dNdX[21], 0, dNdX[25], dNdX[24], 0, dNdX[28],
+     dNdX[27], 0,
+     0, dNdX[2], dNdX[1], 0, dNdX[5], dNdX[4], 0, dNdX[8], dNdX[7], 0, dNdX[11], dNdX[10], 0, dNdX[14],
+     dNdX[13], 0, dNdX[17], dNdX[16], 0, dNdX[20], dNdX[19], 0, dNdX[23], dNdX[22], 0, dNdX[26], dNdX[25], 0, dNdX[29],
+     dNdX[28],
+     dNdX[2],       0, dNdX[0], dNdX[5], 0, dNdX[3], dNdX[8], 0, dNdX[6], dNdX[11], 0, dNdX[9],
+     dNdX[14], 0, dNdX[12], dNdX[17], 0, dNdX[15], dNdX[20], 0, dNdX[18], dNdX[23], 0, dNdX[21], dNdX[26], 0, dNdX[24],
+     dNdX[29], 0, dNdX[27]};
+
+
+    // temp = (E * B)
+    for (int row = 0; row < 6; row++) {
+      for (int col = 0; col < 30; col++) {
+        Sum = 0;
+        for (int k = 0; k < 6; k++) {
+          Sum += Emat[row + k*6] * B[col + k*30];
+        }
+        temp[30* row + col] = Sum;
+      }
     }
-    
-    Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
-    Base::adapter_->GetNodesComponentsBoundaryConditions(30, nodesCoordsIndices, boundaryConditions);
-    
-    TFloat c = (Base::material_->GetMassDensity() * GetVolume()) / 10;
-    TFloat massMatrixEntries[900];
-    
-    for (int i = 0; i < 30; i++)
-        for (int j = 0; j < 30; j++)
-            if ((i == j) && (boundaryConditions[i] == 0))
-                massMatrixEntries[30*i+j] = c;
-            else
-                massMatrixEntries[30*i+j] = 0;
-    
-    Base::adapter_->SetMassMatrixEntries(30, nodesCoordsIndices, 30, nodesCoordsIndices, massMatrixEntries);
-    return CBStatus::SUCCESS;
+
+    // K = B^T*temp
+    for (int row = 0; row < 30; row++) {
+      for (int col = 0; col < 30; col++) {
+        Sum = 0;
+        for (int k = 0; k < 6; k++) {
+          Sum += B[k*30 + col] * temp[row +  k*30];
+        }
+        if (!boundaryConditions[row] && !boundaryConditions[col]) {
+          K[row + col*30] += factor * Sum;
+        } else {
+          K[row + col*30] = 0;
+        }
+      }
+    }
+  }
+
+  Base::adapter_->SetStiffnessMatrixEntries(30, nodesCoordsIndices, 30, nodesCoordsIndices, K);
+  return CBStatus::SUCCESS;
+} // CBElementSolidT10::CalcStiffnessMatrix
+
+CBStatus CBElementSolidT10::CalcLumpedMassMatrix() { // NY
+  //  Lumped Mass Matrix for a 4-Node Tetrahedron
+  //
+  //                     | 5 0 0 0 0 0 0 0 0 0 0 0 |
+  //                     | 0 5 0 0 0 0 0 0 0 0 0 0 |
+  //                     | 0 0 5 0 0 0 0 0 0 0 0 0 |
+  //                     | 0 0 0 5 0 0 0 0 0 0 0 0 |
+  //                     | 0 0 0 0 5 0 0 0 0 0 0 0 |
+  //                     | 0 0 0 0 0 5 0 0 0 0 0 0 |
+  //     M =    pV/20 *  | 0 0 0 0 0 0 5 0 0 0 0 0 |
+  //                     | 0 0 0 0 0 0 0 5 0 0 0 0 |
+  //                     | 0 0 0 0 0 0 0 0 5 0 0 0 |
+  //                     | 0 0 0 0 0 0 0 0 0 5 0 0 |
+  //                     | 0 0 0 0 0 0 0 0 0 0 5 0 |
+  //                     | 0 0 0 0 0 0 0 0 0 0 0 5 |
+  TFloat nodesCoords[30];
+  bool   boundaryConditions[30];
+  TInt   nodesCoordsIndices[30];
+
+  for (unsigned int i = 0; i < 10; i++) {
+    nodesCoordsIndices[3*i]   = 3*nodesIndices_[i];
+    nodesCoordsIndices[3*i+1] = 3*nodesIndices_[i]+1;
+    nodesCoordsIndices[3*i+2] = 3*nodesIndices_[i]+2;
+  }
+
+  Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
+  Base::adapter_->GetNodesComponentsBoundaryConditions(30, nodesCoordsIndices, boundaryConditions);
+
+  TFloat c = (Base::material_->GetMassDensity() * GetVolume()) / 10;
+  TFloat massMatrixEntries[900];
+
+  for (int i = 0; i < 30; i++)
+    for (int j = 0; j < 30; j++)
+      if ((i == j) && (boundaryConditions[i] == 0))
+        massMatrixEntries[30*i+j] = c;
+      else
+        massMatrixEntries[30*i+j] = 0;
+
+  Base::adapter_->SetMassMatrixEntries(30, nodesCoordsIndices, 30, nodesCoordsIndices, massMatrixEntries);
+  return CBStatus::SUCCESS;
 } // CBElementSolidT10::CalcLumpedMassMatrix
+// end from Eki's version
 
 void CBElementSolidT10::GetNodesCoordsIndices(TInt *nodesCoordsIndices) {
     for (unsigned int i = 0; i < 10; i++) {
@@ -467,6 +574,11 @@ CBStatus CBElementSolidT10::CalcNodalForces() {
     TFloat   nodesCoords[30];
     bool     boundaryConditions[30];
     TInt     nodesCoordsIndices[30];
+
+    // from eki's version
+    Matrix3<TFloat> a;
+    Base::adapter_->GetActiveStressTensor(localIndex_, a);
+    // end from eki's version
     
     GetNodesCoordsIndices(nodesCoordsIndices);
     
@@ -475,7 +587,7 @@ CBStatus CBElementSolidT10::CalcNodalForces() {
     
     TFloat forces[30];
     
-    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, forces);
+    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, forces);
     
     if (rc != CBStatus::SUCCESS)
         return rc;
@@ -490,6 +602,11 @@ CBStatus CBElementSolidT10::CalcNodalForcesWithoutActiveStress() {
     TFloat   nodesCoords[30];
     bool     boundaryConditions[30];
     TInt     nodesCoordsIndices[30];
+
+    // from eki's version
+    Matrix3<TFloat> a;
+    Base::adapter_->GetActiveStressTensor(localIndex_, a);
+    // end from eki's version
     
     GetNodesCoordsIndices(nodesCoordsIndices);
     
@@ -498,7 +615,7 @@ CBStatus CBElementSolidT10::CalcNodalForcesWithoutActiveStress() {
     
     TFloat forces[30];
     
-    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, forces);
+    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, forces);
     
     if (rc != CBStatus::SUCCESS)
         return rc;
@@ -524,7 +641,12 @@ CBStatus CBElementSolidT10::CalcNodalForcesJacobian() {
     memcpy(indices, nodesCoordsIndices, 30*sizeof(TInt));
     
     Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
-    
+
+    // from eki's version
+    Matrix3<TFloat> a;
+    Base::adapter_->GetActiveStressTensor(localIndex_, a);
+    // end from eki's version
+
     TFloat epsilon = Base::adapter_->GetFiniteDifferencesEpsilon();
     TFloat epsilon2 = 2.0*epsilon;
     
@@ -546,12 +668,12 @@ CBStatus CBElementSolidT10::CalcNodalForcesJacobian() {
         nodeCoord = nodesCoords[i];
         
         nodesCoords[i] = nodeCoord + epsilon;
-        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, f1);
+        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, f1);
         if (rc != CBStatus::SUCCESS)
             return rc;
         
         nodesCoords[i] = nodeCoord - epsilon;
-        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, f2);
+        rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a,  f2);
         
         nodesCoords[i] = nodeCoord;
         
@@ -565,6 +687,245 @@ CBStatus CBElementSolidT10::CalcNodalForcesJacobian() {
     Base::adapter_->AddNodalForcesJacobianEntries(30, indices, 30, indices, forcesJacobian);
     return CBStatus::SUCCESS;
 } // CBElementSolidT10::CalcNodalForcesJacobian
+
+// from Eki's version
+CBStatus CBElementSolidT10::CalcNodalForcesActiveStressJacobian(int elementIndex) { // Calculate how the nodal forces depend on the active stress -> needed for the inverse problem of cardiac mechanics
+  CBStatus rc;
+  TFloat   nodesCoords[30];
+  bool     boundaryConditions[30];
+  TInt     nodesCoordsIndices[30];
+
+  Matrix3<TFloat> a;
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+
+  GetNodesCoordsIndices(nodesCoordsIndices);
+
+  Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
+  Base::adapter_->GetNodesComponentsBoundaryConditions(30, nodesCoordsIndices, boundaryConditions);
+
+  TFloat forces[30];
+
+  rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, forces);
+
+  if (rc != CBStatus::SUCCESS)
+    return rc;
+
+  TFloat epsilon = Base::adapter_->GetFiniteDifferencesEpsilon();
+
+  // Calculate forces jacobian
+  TFloat forcesActiveStressJacobian[30];
+
+  TInt indices[30];
+  memcpy(indices, nodesCoordsIndices, 30*sizeof(TInt));
+
+  for (int i = 0; i < 30; i++)
+    if (boundaryConditions[i] == true)
+      indices[i] = -1;
+
+  epsilon = 1;
+
+
+  Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
+
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+  a(0, 0) += epsilon;
+  TFloat t[30];
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t);
+
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+  a(0, 0) -= epsilon;
+  TFloat t2[30];
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t2);
+
+  for (int k = 0; k < 10; k++) {
+    if (boundaryConditions[3*k] == 0)
+      forcesActiveStressJacobian[3*k] = (t[3*k] - t2[3*k]) / (2*epsilon);
+    else
+      forcesActiveStressJacobian[3*k] = 0;
+
+    if (boundaryConditions[3*k+1] == 0)
+      forcesActiveStressJacobian[3*k+1] = (t[3*k+1] - t2[3*k+1]) / (2*epsilon);
+    else
+      forcesActiveStressJacobian[3*k+1] = 0;
+
+    if (boundaryConditions[3*k+2] == 0)
+      forcesActiveStressJacobian[3*k+2] = (t[3*k+2] - t2[3*k+2]) / (2*epsilon);
+    else
+      forcesActiveStressJacobian[3*k+2] = 0;
+  }
+
+  if (elementIndex == -1)
+    elementIndex = localIndex_;
+
+  Base::adapter_->AddNodalForcesActiveStressJacobianEntries(30, indices, 1, &elementIndex, forcesActiveStressJacobian);
+  return CBStatus::SUCCESS;
+} // CBElementSolidT10::CalcNodalForcesActiveStressJacobian
+
+/// Calculate how the nodal forces depend on the active stress and fiber angles phi, theta in this element -> needed for the inverse problem of cardiac mechanics
+CBStatus CBElementSolidT10::CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian(int elementIndex) {
+  CBStatus rc;
+  TFloat   nodesCoords[30];
+  bool     boundaryConditions[30];
+  TInt     nodesCoordsIndices[30];
+
+  Matrix3<TFloat> a;
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+
+  GetNodesCoordsIndices(nodesCoordsIndices);
+
+  Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
+  Base::adapter_->GetNodesComponentsBoundaryConditions(30, nodesCoordsIndices, boundaryConditions);
+
+  TFloat forces[30];
+
+  rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, forces);
+
+  if (rc != CBStatus::SUCCESS)
+    return rc;
+
+  TFloat epsilon = Base::adapter_->GetFiniteDifferencesEpsilon();
+  epsilon = 1;
+  TFloat delta = 0.01745329251994330; // 1 deg in rad
+
+  // Calculate forces jacobian
+  TFloat forcesActiveStressJacobian[30];
+  TFloat forcesPhiJacobian[30];
+  TFloat forcesThetaJacobian[30];
+
+  TInt indices[30];
+  memcpy(indices, nodesCoordsIndices, 30*sizeof(TInt)); //  indices[i]=nodesCoordsIndices[i]
+
+  for (int i = 0; i < 30; i++)
+    if (boundaryConditions[i] == true)
+      indices[i] = -1;
+
+  Base::adapter_->GetNodesCoords(30, nodesCoordsIndices, nodesCoords);
+
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+  a(0, 0) += epsilon;
+  TFloat t[30];
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t);
+
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+  a(0, 0) -= epsilon;
+  TFloat t2[30];
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t2);
+
+  for (int k = 0; k < 10; k++) {
+    if (boundaryConditions[3*k] == 0)
+      forcesActiveStressJacobian[3*k] = (t[3*k] - t2[3*k]) / (2*epsilon);
+    else
+      forcesActiveStressJacobian[3*k] = 0;
+
+    if (boundaryConditions[3*k+1] == 0)
+      forcesActiveStressJacobian[3*k+1] = (t[3*k+1] - t2[3*k+1]) / (2*epsilon);
+    else
+      forcesActiveStressJacobian[3*k+1] = 0;
+
+    if (boundaryConditions[3*k+2] == 0)
+      forcesActiveStressJacobian[3*k+2] = (t[3*k+2] - t2[3*k+2]) / (2*epsilon);
+    else
+      forcesActiveStressJacobian[3*k+2] = 0;
+  }
+
+  if (elementIndex == -1) {
+    elementIndex = 3*localIndex_;
+    Base::adapter_->AddNodalForcesActiveStressTensorAndFiberOrientationJacobianEntries(30, indices, 1, &elementIndex,
+                                                                                       forcesActiveStressJacobian);
+    elementIndex = -1;
+  } else {
+    Base::adapter_->AddNodalForcesActiveStressTensorAndFiberOrientationJacobianEntries(30, indices, 1, &elementIndex,
+                                                                                       forcesActiveStressJacobian);
+  }
+
+
+  Matrix3<TFloat> fiberOrientation[5];
+  for (int i = 0; i < 5; i++)
+    fiberOrientation[i] = *GetBasisAtQuadraturePoint(i);
+
+  RotateFiberBy(delta, 0);
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t);
+
+  for (int i = 0; i < 5; i++)
+    this->SetBasisAtQuadraturePoint(i, fiberOrientation[i]);
+
+  RotateFiberBy(-delta, 0);
+
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t2);
+
+  for (int i = 0; i < 5; i++)
+    this->SetBasisAtQuadraturePoint(i, fiberOrientation[i]);
+
+  for (int k = 0; k < 10; k++) {
+    if (boundaryConditions[3*k] == 0)
+      forcesPhiJacobian[3*k] = (t[3*k] - t2[3*k]) / (2*delta);
+    else
+      forcesPhiJacobian[3*k] = 0;
+
+    if (boundaryConditions[3*k+1] == 0)
+      forcesPhiJacobian[3*k+1] = (t[3*k+1] - t2[3*k+1]) / (2*delta);
+    else
+      forcesPhiJacobian[3*k+1] = 0;
+
+    if (boundaryConditions[3*k+2] == 0)
+      forcesPhiJacobian[3*k+2] = (t[3*k+2] - t2[3*k+2]) / (2*delta);
+    else
+      forcesPhiJacobian[3*k+2] = 0;
+  }
+  if (elementIndex == -1) {
+    elementIndex = 3*localIndex_+1;
+    Base::adapter_->AddNodalForcesActiveStressTensorAndFiberOrientationJacobianEntries(30, indices, 1, &elementIndex,
+                                                                                       forcesPhiJacobian);
+    elementIndex = -1;
+  } else {
+    Base::adapter_->AddNodalForcesActiveStressTensorAndFiberOrientationJacobianEntries(30, indices, 1, &elementIndex,
+                                                                                       forcesPhiJacobian);
+  }
+
+  RotateFiberBy(0, delta);
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t);
+
+  for (int i = 0; i < 5; i++)
+    this->SetBasisAtQuadraturePoint(i, fiberOrientation[i]);
+
+  RotateFiberBy(0, -delta);
+
+  Base::adapter_->GetActiveStressTensor(localIndex_, a);
+  CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t2);
+
+  for (int i = 0; i < 5; i++)
+    this->SetBasisAtQuadraturePoint(i, fiberOrientation[i]);
+
+  for (int k = 0; k < 10; k++) {
+    if (boundaryConditions[3*k] == 0)
+      forcesThetaJacobian[3*k] = (t[3*k] - t2[3*k]) / (2*delta);
+    else
+      forcesThetaJacobian[3*k] = 0;
+
+    if (boundaryConditions[3*k+1] == 0)
+      forcesThetaJacobian[3*k+1] = (t[3*k+1] - t2[3*k+1]) / (2*delta);
+    else
+      forcesThetaJacobian[3*k+1] = 0;
+
+    if (boundaryConditions[3*k+2] == 0)
+      forcesThetaJacobian[3*k+2] = (t[3*k+2] - t2[3*k+2]) / (2*delta);
+    else
+      forcesThetaJacobian[3*k+2] = 0;
+  }
+  if (elementIndex == -1) {
+    elementIndex = 3*localIndex_+2;
+    Base::adapter_->AddNodalForcesActiveStressTensorAndFiberOrientationJacobianEntries(30, indices, 1, &elementIndex,
+                                                                                       forcesThetaJacobian);
+    elementIndex = -1;
+  } else {
+    Base::adapter_->AddNodalForcesActiveStressTensorAndFiberOrientationJacobianEntries(30, indices, 1, &elementIndex,
+                                                                                       forcesThetaJacobian);
+  }
+
+  return CBStatus::SUCCESS;
+} // CBElementSolidT10::CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian
+// end from Eki's version
 
 TFloat CBElementSolidT10::GetVolume() {
     return detJ_/6;
@@ -617,7 +978,7 @@ void CBElementSolidT10::CheckNodeSorting() {
     }
 } // CBElementSolidT10::CheckNodeSorting
 
-CBStatus CBElementSolidT10::CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, TFloat *forces) {
+CBStatus CBElementSolidT10::CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, const Matrix3<TFloat> *epsilon, TFloat *forces) {
     CBStatus rc;
     Matrix3<TFloat> activeStress    = {0, 0, 0, 0, 0, 0, 0, 0, 0};
     Matrix3<TFloat> deformationTensors[4];
@@ -642,7 +1003,14 @@ CBStatus CBElementSolidT10::CalcNodalForcesHelperFunction(const TFloat *nodesCoo
             return rc;
         
         // until here, stress holds the PK2 stress
-        activeStress = Base::tensionModel_->CalcActiveStress(deformationTensors[QPi], time);
+
+        // ek717: in case the CBTensionExternalQuadPointsModel is used, each QP has its own active stress and can not use the one of the elment (calculated in the centroid)
+        if (this->GetMaterial()->GetTensionName() == "ExternalQuadPoints") {
+            activeStress = Base::tensionModel_->CalcActiveStressAtQuadraturePoint(deformationTensors[QPi], time, QPi+1); // +1 since centroid is at i = 0
+        } else {
+            activeStress = Base::tensionModel_->CalcActiveStress(deformationTensors[QPi], time);
+        }
+
         stress[QPi] += activeStress;
         
         // convert PK2 stress into nominal stress with respect to the local coordinate system aligned with the fibres

@@ -48,7 +48,14 @@ public:
         // For benchmark problems/examples to be correct
         // return activeStress * Matrix3<TFloat> {1, 0, 0, 0, 0, 0, 0, 0, 0};
     }
-    
+    //from Eki's version
+    // ek717: TODO: CalcActiveStressAtQuadPoint and SetActiveTensionForOneQuaraturePoint are only needed in the CBTensionExternalQuadPointsModel and it will not be called for others TensionModels...
+    // sehr hesslich: TODO: impl only in the Child-Class, as it is only needed there
+    virtual math_pack::Matrix3<double>  CalcActiveStressAtQuadraturePoint(const math_pack::Matrix3<double> &deformation,
+                                                                          const double time, int indexQP) {
+        return math_pack::Matrix3<double>(CalcActiveTension(deformation, time), 0, 0,  0, 0, 0,  0, 0, 0);
+    }
+    //end from Eki's version
     virtual CBStatus SetActiveTensionAtQuadraturePoint(int indexQP, TFloat activeTension) {
         return CBStatus::SUCCESS;
     }
@@ -116,6 +123,27 @@ public:
         return 0;
     }
 };
+
+// from Eki's version
+/// Tension model with linear increasing tension. It's slope is 1e6 and clipped at that value.
+class CBLinearTension : public CBTensionModel {
+ public:
+  CBLinearTension(CBElementSolid *e) { Tmax_ = e->GetMaterial()->GetProperties()->tensionMax_; }
+
+  ~CBLinearTension() {}
+
+  virtual double CalcActiveTension(const math_pack::Matrix3<double> &deformation, const double time) override {
+    TFloat T = time;
+
+    if (T > 1)
+      T = 1;
+
+    // TFloat d = (deformation(0,0)-0.84)/(1-0.84);
+    TFloat d = 1;
+    return Tmax_ * T * d;
+  }
+};
+//end from Eki's version
 
 /// Provides tensions from a tension.list file. The actual data is outsourced and managed by a FileManager object that lives within the solver class. The tension between stored data gets interpolated from CBDataFromFile* object.
 class CBFileTension : public CBTensionModel {

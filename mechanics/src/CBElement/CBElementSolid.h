@@ -33,6 +33,18 @@ public:
     // ------- Pure virtual functions -------
     virtual CBStatus CalcNodalForcesJacobian() = 0;
     
+    virtual CBStatus CalcNodalForcesActiveStressJacobian(int i = -1) {
+        throw std::runtime_error(
+                "CBElementSolid::CalcNodalForcesActiveStressJacobian(): This function is not implemented for the requested child class:");
+        return CBStatus::FAILED;
+    }
+
+    virtual CBStatus CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian(int i = -1) {
+        throw std::runtime_error(
+                "CBElementSolid::CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian(): This function is not implemented for the requested child class:");
+        return CBStatus::FAILED;
+    }
+
     virtual CBStatus CalcNodalForces()         = 0;
     
     virtual CBStatus SetNodalForcesToZeroIfElementIsDefect() {
@@ -59,6 +71,7 @@ public:
     virtual CBStatus CalcNodalForcesAndJacobian() = 0;
     virtual CBStatus CalcConsistentMassMatrix()   = 0;
     virtual CBStatus CalcLumpedMassMatrix()       = 0;
+    virtual CBStatus CalcStiffnessMatrix()        = 0;
     
     virtual bool IsElementInverted() {return false;}
     

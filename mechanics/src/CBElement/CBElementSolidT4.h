@@ -38,6 +38,7 @@ public:
     std::string GetType() {return std::string("T4");}
     
     void CheckNodeSorting();
+    CBStatus CalcStiffnessMatrix();
     CBStatus CalcNodalForcesJacobian();
     CBStatus CalcNodalForces();
     CBStatus CalcNodalForcesAndJacobian();
@@ -70,7 +71,7 @@ protected:
                                       bool useReferenceNodes = false);
     void CalcDeformationTensorWithLocalBasis(const TFloat *nodesCoords, Matrix3<TFloat> &deformationTensor);
     void GetNodesCoordsIndices(TInt *nodesCoordsIndices);
-    virtual CBStatus CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, TFloat *forces);
+    virtual CBStatus CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, Matrix3<TFloat> *activeStress, TFloat *forces);
     std::array<TInt, 4>   nodesIndices_;
     std::array<TFloat, 12> dNdX_;     // partial derivates of the shape function Ni: âNi/âx Since this element is linear, the derivates are constant over the whole element.
     TFloat detJ_ = 0;
