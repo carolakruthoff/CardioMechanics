@@ -101,13 +101,14 @@ void CBDataFromFile::LoadFileList(std::string filename) {
         file.close();
     }
     isDataSetLoaded_ = true;
-    timeDataBegin_ = 0;
-    timeDataEnd_   = 0;
+    // changed this from 0 to fileList_front().first
+    timeDataBegin_ = fileList_.front().first;
+    timeDataEnd_   = fileList_.front().first;
 } // CBDataFromFile::LoadFileList
 
 bool CBDataFromFile::LoadDataSet(TFloat time) {
     int32_t numValues;
-    
+
     // change interval bounds and reload corresponding data only if time is not
     // within the currently loaded interval
     if ((time < timeDataBegin_) || (time >= timeDataEnd_) || (dataBegin_.size() == 0) || (dataEnd_.size() == 0)) {
@@ -115,16 +116,37 @@ bool CBDataFromFile::LoadDataSet(TFloat time) {
         while (time >= it->first && it != fileList_.end()) {
             it++;
         }
-        
+        // Tried debugging here
+        std::cout << "Loading interval: [" << (it-1)->first << ", " << it->first << ")" << std::endl;
+        std::cout << "Loading files: " << (it-1)->second << " and " << it->second << std::endl;
+
         if (it != fileList_.end()) {
             std::ifstream file;
             
             file.open(it->second.c_str(), std::ios::in | std::ios::binary);
             file.read((char *)(&numValues), sizeof(int32_t));
+            // added for debugging
+            std::cout << "After reading numValues: fail=" << file.fail() << ", bad=" << file.bad() << ", eof=" << file.eof() << std::endl;
+            std::cout << "numValues: " << numValues << std::endl;
+
+            // Get the file size
+            file.seekg(0, std::ios::end);
+            std::streampos fileSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+            std::cout << "File size: " << fileSize << " bytes" << std::endl;
+
+            // Expected size: 4 (for numValues) + numValues * 8 (for doubles)
+            std::streampos expectedSize = 4 + numValues * 8;
+            std::cout << "Expected size: " << expectedSize << " bytes" << std::endl;
+            // end of debugging
             dataEnd_.clear();
             dataEnd_.reserve(numValues);
             double *values = new double[numValues];
             file.read((char *)values, sizeof(double) * numValues);
+            // added for debugging
+            std::cout << "After reading values: fail=" << file.fail() << ", bad=" << file.bad() << ", eof=" << file.eof() << std::endl;
+
+
             if (file.fail())
                 throw std::runtime_error("CBDataFromFile::LoadDataSet(): File " + it->second + " is corrupt !");
             for (int i = 0; i < numValues; i++)
