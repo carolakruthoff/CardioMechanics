@@ -28,6 +28,7 @@
 
 // added for active stress estimation
 #include "CBDetermineNodalForces.h"
+#include "CBPointsCtrl.h"
 
 class CBSolverPlugin;
 
@@ -94,13 +95,17 @@ void CBSolverPluginFactory::LoadAllPlugins(std::vector<CBSolverPlugin *> &plugin
     }
 
     // added for active stress estimation
-    if (parameters->Get<bool>("Solver.Plugins.CBDetermineNodalForces", false)) {
+    if (parameters->Get<bool>("Solver.Plugins.DetermineNodalForces", false)) {
         CBSolverPlugin *solverPlugin = new CBDetermineNodalForces();
         solverPlugin->SetParameters(parameters);
         plugins_.push_back(solverPlugin);
     }
 
-
+    if (parameters->Get<bool>("Solver.Plugins.PointsCtrl", false)) {
+        CBSolverPlugin *solverPlugin = new CBPointsCtrl();
+        solverPlugin->SetParameters(parameters);
+        plugins_.push_back(solverPlugin);
+    }
     
     plugins = plugins_;
 } // CBSolverPluginFactory::LoadAllPlugins
