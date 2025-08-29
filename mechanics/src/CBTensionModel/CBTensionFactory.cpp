@@ -19,6 +19,7 @@
 #include "CBTensionModelLand17.h"
 #include "CBTensionModelTanH.h"
 #include "CBTensionModelBestel.h"
+#include "CBTensionModelExternal.h"
 
 #include "CBTiming.h"
 #include "CBFileManager.h"
@@ -41,6 +42,8 @@ void CBTensionFactory::Init(ParameterMap *parameters, CBTiming *timing, CBFileMa
     producers_["Land17"]        = [this](CBElementSolid *ele) {return new CBTensionModelLand17(ele, parameters_); };
     producers_["TanH"]          = [this](CBElementSolid *ele) {return new CBTensionModelTanH(ele, parameters_); };
     producers_["Bestel"]        = [this](CBElementSolid *ele) {return new CBTensionModelBestel(ele, parameters_); };
+    // added for Eki's version
+    producers_["TensionEstimator"] = [this](CBElementSolid *ele) {return new CBTensionModelExternal(ele, parameters_); };
 }
 
 /// returns a new tensionModel, that fits to the tensionName found in the passed elements material properties
