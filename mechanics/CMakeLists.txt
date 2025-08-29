@@ -146,6 +146,7 @@ SET( SRCS
     src/CBSolverPlugins/CBRobinBoundary.cpp
     src/CBSolverPlugins/CBRobinBoundaryGeneral.cpp
     src/CBSolverPlugins/CBLoadUnloadedState.cpp
+    src/CBSolverPlugins/CBPointsCtrl.cpp
     src/CBSolverPlugins/CBSolverPluginCavities.cpp
     src/CBSolverPlugins/CBSolverPluginFactory.cpp
     src/CBSolverPlugins/CBacCELLerate.cpp
