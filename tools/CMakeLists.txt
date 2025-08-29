@@ -65,3 +65,12 @@ kaMakeTool( FixNodes
 kaMakeTool( ConvertT4toT10
     ./MechanicsUtility/ConvertT4toT10.cpp
 )
+
+# added from Eki's version
+kaMakeTool( ExtractSurfaceNodesFromVTU
+		./MechanicsUtility/ExtractSurfaceNodesFromVTU.cpp
+		../electrophysiology/src/Lattice/kaMachineOS.cpp
+		../electrophysiology/src/Lattice/kaBasicIO.cpp
+		${VTK_LIBRARIES_STRING}
+		-lz
+)
