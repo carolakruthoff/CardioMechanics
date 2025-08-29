@@ -110,11 +110,11 @@ macro ( IBTProject )
     include ( kaPrefix ) # sets /macosx/ or /linuxELF/ etc
 
     # Pre-set the MPI compiler path so that FindMPI finds our MPI
-    set ( MPI_C_COMPILER "${THIRDPARTY_HOME}/${KAPREFIX}/openMPI-64bit/bin/mpicc" )
+    set ( MPI_C_COMPILER "/Users/ck620/software/petsc/bin/mpicc" )
     if ( NOT EXISTS ${MPI_C_COMPILER} )
         unset ( MPI_C_COMPILER )
     else ( )
-        set ( MPI_CXX_COMPILER "${THIRDPARTY_HOME}/${KAPREFIX}/openMPI-64bit/bin/mpicxx" )
+        set ( MPI_CXX_COMPILER "/Users/ck620/software/petsc/bin/mpicxx" )
     endif ( NOT EXISTS ${MPI_C_COMPILER} )
     
     option ( IBT_USE_CCACHE "Use ccache to cache build results" OFF )
