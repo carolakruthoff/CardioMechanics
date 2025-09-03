@@ -116,18 +116,18 @@ bool CBDataFromFile::LoadDataSet(TFloat time) {
         while (time >= it->first && it != fileList_.end()) {
             it++;
         }
-        // Tried debugging here
+        /* Tried debugging here
         std::cout << "Loading interval: [" << (it-1)->first << ", " << it->first << ")" << std::endl;
-        std::cout << "Loading files: " << (it-1)->second << " and " << it->second << std::endl;
+        std::cout << "Loading files: " << (it-1)->second << " and " << it->second << std::endl; */
 
         if (it != fileList_.end()) {
             std::ifstream file;
             
             file.open(it->second.c_str(), std::ios::in | std::ios::binary);
             file.read((char *)(&numValues), sizeof(int32_t));
-            // added for debugging
+            /* added for debugging
             std::cout << "After reading numValues: fail=" << file.fail() << ", bad=" << file.bad() << ", eof=" << file.eof() << std::endl;
-            std::cout << "numValues: " << numValues << std::endl;
+            std::cout << "numValues for" << it->second << ": " << numValues << std::endl;
 
             // Get the file size
             file.seekg(0, std::ios::end);
@@ -138,13 +138,13 @@ bool CBDataFromFile::LoadDataSet(TFloat time) {
             // Expected size: 4 (for numValues) + numValues * 8 (for doubles)
             std::streampos expectedSize = 4 + numValues * 8;
             std::cout << "Expected size: " << expectedSize << " bytes" << std::endl;
-            // end of debugging
+            // end of debugging*/
             dataEnd_.clear();
             dataEnd_.reserve(numValues);
             double *values = new double[numValues];
             file.read((char *)values, sizeof(double) * numValues);
-            // added for debugging
-            std::cout << "After reading values: fail=" << file.fail() << ", bad=" << file.bad() << ", eof=" << file.eof() << std::endl;
+            /* added for debugging
+            std::cout << "After reading values: fail=" << file.fail() << ", bad=" << file.bad() << ", eof=" << file.eof() << std::endl; */
 
 
             if (file.fail())
