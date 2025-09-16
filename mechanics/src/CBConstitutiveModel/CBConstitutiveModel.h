@@ -44,6 +44,20 @@ public:
     }
     
     virtual CBStatus CalcPK2Stress(const Matrix3<TFloat> &deformationTensor, Matrix3<TFloat> &pk2Stress)       = 0;
+
+    // these three functions should rather be part of CBActiveStressModel, and templateForce should be element-specific and rather be a function instead of a TFloat
+    virtual void SetTemplateForce(TFloat templateForce) { templateForce_ = templateForce; }
+
+    virtual TFloat GetTemplateForce() { return templateForce_; }
+
+    virtual Matrix3<TFloat> CalcActiveStress(const Matrix3<TFloat> &deformationTensor, const TFloat templateForce) {
+        Matrix3<TFloat> rightGreenStrain = deformationTensor.GetTranspose()*deformationTensor;
+        TFloat lambda = sqrt(rightGreenStrain.Get(0, 0));
+        Matrix3<TFloat> as;
+
+        as.Set(0, 0) = std::fmaxf(1+slope_*(lambda-1), 0) * Tmax_ * templateForce;
+        return as;
+    }
     
     TInt GetModelIndex() {return modelIndex_; }
     
@@ -56,7 +70,9 @@ protected:
     bool ignoreCorruptElements_;
     TFloat criticalVolumeChange_;
     
+    TFloat templateForce_;
     TFloat Tmax_;
+    TFloat slope_;
     
 private:
 };

@@ -49,11 +49,17 @@ void CBConstitutiveModel::Init(ParameterMap* parameters, TInt materialIndex)
         criticalVolumeChange_ =  parameters->Get<TFloat>("Materials.Mat_Default.CriticalVolumeChange",0.1);
     else
         criticalVolumeChange_ =  parameters->Get<TFloat>("Materials.Mat_" + mi.str() + ".CriticalVolumeChange",0.1);
-    
+
+    // TODO: this should be move to CBActiveStressModel
+    templateForce_ = 0;
     if(parameters->IsAvailable("Materials.Mat_" + mi.str() + ".TensionMax") == false && parameters->IsAvailable("Materials.Mat_Default.TensionMax") == true)
         Tmax_ =  parameters->Get<double>("Materials.Mat_Default.TensionMax");
     else
         Tmax_ =  parameters->Get<double>("Materials.Mat_" + mi.str() + ".TensionMax", 0.);
     
+    if(parameters->IsAvailable("Materials.Mat_" + mi.str() + ".TensionSlope") == false && parameters->IsAvailable("Materials.Mat_Default.TensionSlope") == true)
+        slope_ =  parameters->Get<double>("Materials.Mat_Default.TensionSlope");
+    else
+        slope_ =  parameters->Get<double>("Materials.Mat_" + mi.str() + ".TensionSlope", 1.0);
 }
 
