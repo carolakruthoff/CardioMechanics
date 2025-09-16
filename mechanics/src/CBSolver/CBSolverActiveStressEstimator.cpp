@@ -54,12 +54,13 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
   activeStress_->Init(GetNumberOfElements());
   SetActiveStressDataSource(activeStress_);
 
+  //doubles nodes vector into dx and sets all values to zero -> probably dx used for displacement data
   VecDuplicate(nodes_, &dx_);
   VecZeroEntries(dx_);
   contact_ = 0;
   nForces_ = 0;
 
-  // find Contact Handling Plugin
+  // find Contact Handling Plugin, throws error, if it's not there
   for (auto &p : plugins_) {
     if (dynamic_cast<CBContactHandling *>(p) != 0)
       contact_ = dynamic_cast<CBContactHandling *>(p);
@@ -74,27 +75,30 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
   //    if(nForces_ == 0)
   //        throw std::runtime_error("void CBParameterEstimator::Init(): DetermineNodalForces plugin is needed for parameter estimation");
 
-
+  // mat_: list of material indices (consider only elements with these material)
   mat_ = parameters_->GetArray<TInt>("Solver.ActiveStressEstimator.Materials", {});
   std::set<TInt> nodesOfInterest;
   std::set<TInt> elementsOfInterest;
 
+  // switch to element type T4, these are used for the Estimator Step
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT4();
     if (dynamic_cast<CBElementSolidT10RIT4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT4();
-
+  // see if the elements have the materialnumber(s) specified in the list
     if (mat_.size() != 0) {
       if (find(mat_.begin(), mat_.end(), i->GetMaterialIndex()) == mat_.end())
         continue;
     }
-
+  // for each solid element of interest (of specified material) get all node indices of this element
+  // save the node indices in nodesofInterest
     for (int j = 0; j < i->GetNumberOfNodesIndices(); j++) {
       nodesOfInterest.insert(i->GetNodeIndex(j));
     }
     elementsOfInterest.insert(i->GetIndex());
   }
+  // there are 3 values for each node of interest -> n: amount of evaluation point components
   numNodesOfInterestIndices_ = 3*nodesOfInterest.size();
   numElementOfInterestIndices = elementsOfInterest.size();
 
@@ -104,10 +108,14 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
 
   std::set<TInt>::iterator it = nodesOfInterest.begin();
 
+  // number of nodes of interest mapping (?)
   nim_ = new PetscInt[numNodes_];
 
   for (int i = 0; i < numNodes_; i++)
     nim_[i] = -1;
+
+  // For each node in nodesOfInterest, maps its global index to a local index in nim_
+  // and fills ni with triplets of indices for x, y, z components
 
   for (int i = 0; i < nodesOfInterest.size(); i++) {
     nim_[*it] = i;
@@ -116,9 +124,12 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
     ni[3 * i + 2] = 3* *it + 2;
     it++;
   }
-
+  //retrieves nnumber of Targetnodes if they are given in the -xml script
   TInt numTargets = parameters_->Get<TInt>("Solver.ActiveStressEstimator.NumberOfTargetNodes", -1);
 
+  // li_ are penalty parameters for the thikonov regularization, they can all be set to 0
+  // it is advised to set 1 to 2 of these parameters unequal to 0, but never all
+  // these parameters unequal to zero are defined in the .xml script
   l1_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l1", 0);
   l2_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l2", 0);
   l3_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l3", 0);
@@ -127,33 +138,37 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
   l6_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l6", 0);
   l7_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l7", 0);
 
+  // We want a deterministic initialization of the random number -> fixed seed for random number generation
+  srand(0);
 
-  srand(0); // We want a deterministic initialization of the random number.
-
+  // m: amount of elements of interest
   std::set<TInt> m = contact_->GetMasterNodesLocalIndices();
   std::set<TInt> m2;
 
+  // write only master nodes that are also nodes of interest in m2
   for (auto i = m.begin(); i != m.end(); i++)
     if (nodesOfInterest.find(*i) != nodesOfInterest.end())
       m2.insert(*i);
 
   int r = m2.size() / numTargets;
   if ((r <= 1) || (numTargets == -1)) {
+    // mn: Masternodes of interest (?)
     mn_ = m2;
-  } else {
+  } else { // if numTargets is specified it randomly selects a subset of master nodes
     for (auto i : m2) {
       if (rand() % r == 0)
         mn_.insert(i);
     }
   }
 
-
+  // allocate arrays for mapping
   numMasterNodesIndices_ = 3*mn_.size();
   masterNodesIndicesMapping_  = new PetscInt[numMasterNodesIndices_];
   masterNodesIndicesNodesOfInterestMapping_ = new PetscInt[numMasterNodesIndices_];
 
   it = mn_.begin();
 
+  //Master nodes are mapped to their global and local indices
   for (int i = 0; i < mn_.size(); i++) {
     PetscInt j = nim_[*it];
     if (j == -1)
@@ -169,20 +184,25 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
     it++;
   }
 
-
+  // map elements of interest to their indices
   it = elementsOfInterest.begin();
   for (int i = 0; i < elementsOfInterest.size(); i++) {
     elementsOfInterestMapping_[i] = *it;
     it++;
   }
 
+  // Create PETSc index sets (IS) for master nodes, elements and nodes of interest (efficient data access)
   ISCreateGeneral(
     Petsc::Comm(), numMasterNodesIndices_, masterNodesIndicesMapping_, PETSC_COPY_VALUES, &masterNodesIndices_);
   ISCreateGeneral(
     Petsc::Comm(), numElementOfInterestIndices, elementsOfInterestMapping_, PETSC_COPY_VALUES,
     &elementsOfInterestIndices_);
   ISCreateGeneral(Petsc::Comm(), numNodesOfInterestIndices_, ni, PETSC_COPY_VALUES, &nodesOfInterestIndices_);
+  // duplicates nodes_ into dist_ -> storing distances or residuals
   VecDuplicate(nodes_, &dist_);
+
+  // Switch to T10 elements, this is usually done at the end of the estimator step
+  // since the estimation is done with T4 elements, independent of the type of mesh elements
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT10();
@@ -190,11 +210,12 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT10();
   }
 
+  // set up laplacian matrix (smoothing regularization)
   GenerateElementLaplacian();
+  // creates and duplicates Petsc vectors
   Petsc::CreateSeqVector(numElementOfInterestIndices, &ti_);
   VecDuplicate(ti_, &ti1_);
   VecDuplicate(ti_, &ti2_);
-
   VecDuplicate(nodes_, &tmpNodes_);
 
   //    bool* bc = GetNodesComponentsBoundaryConditionsGlobal();
@@ -204,19 +225,24 @@ void CBSolverActiveStressEstimator::Init(ParameterMap *parameters, CBModel *mode
   //
   //    adapter_->LinkNodesComponentsBoundaryConditionsGlobal(bc);
 
+  // deletes temporary array ni
   delete ni;
 } // CBSolverActiveStressEstimator::Init
 
 void CBSolverActiveStressEstimator::UpdateMasterNodesOfInterest() {
+  // update mapping for master nodes of interest
+
+  // allocate arrays for master nodes
   std::set<TInt> mn;
   std::set<TInt> m = contact_->GetMasterNodesLocalIndices();
   std::set<TInt> m2;
 
+  // write all master nodes, that are nodes of interest (in mn_) into the mn array
   for (auto i = m.begin(); i != m.end(); i++)
     if (mn_.find(*i) != mn_.end())
       mn.insert(*i);
 
-
+  // array allocation for master node mapping
   numMasterNodesIndices_ = 3*mn.size();
 
   if (masterNodesIndices_)
@@ -228,6 +254,7 @@ void CBSolverActiveStressEstimator::UpdateMasterNodesOfInterest() {
   masterNodesIndicesMapping_  = new PetscInt[numMasterNodesIndices_];
   masterNodesIndicesNodesOfInterestMapping_ = new PetscInt[numMasterNodesIndices_];
 
+  //Master nodes are mapped to their global and local indices
   auto it = mn.begin();
 
   for (int i = 0; i < mn.size(); i++) {
@@ -247,10 +274,12 @@ void CBSolverActiveStressEstimator::UpdateMasterNodesOfInterest() {
 } // CBSolverActiveStressEstimator::UpdateMasterNodesOfInterest
 
 CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
+  // vector allocation
   Vec prevNodes;
   Vec target;
   Vec ds;
 
+  // switch element type to T10 (usually done after the estimator step)
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT10();
@@ -258,12 +287,14 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT10();
   }
 
+  // get alpha from .xml-file
   double alpha =  parameters_->Get<TFloat>("Solver.ActiveStressEstimator.Alpha", 0);
 
-
+  // duplicate nodes_ into prevNodes
   VecDuplicate(nodes_, &prevNodes);
   VecCopy(nodes_, prevNodes);
 
+  // call UpdateActiveStress with the last timestep
   UpdateActiveStress(lastTime_);
   UpdateGhostNodesAndLinkToAdapter();
   CreateNodesJacobianAndLinkToAdapter();
@@ -290,7 +321,10 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
   //
   //    contact_->SetAlpha(beta);
   //    contact_->SwitchOn();
-  //
+
+  // call parent SolverStep in CBSolverEquilibrium for the current timestep
+  // the solution (of SolverStep) is the displacement to previous time step node coords
+  // rc is the status of the whole process (SUCCESS vs FAILED)
   rc = CBSolverEquilibrium::SolverStep(time);
 
   if (rc != CBStatus::SUCCESS)
@@ -299,6 +333,8 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
   if (time == timing_.GetStartTime())
     return rc;
 
+  //duplicate nodes into target and ds
+  // create copies of current node positions for use in the estimation loop
   VecDuplicate(nodes_, &target);
   VecDuplicate(nodes_, &ds);
   VecCopy(nodes_, target);
@@ -308,7 +344,7 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
 
   VecZeroEntries(dist_);
 
-  contact_->Apply(time);
+  contact_->Apply(time); // apply from ContactHandling
   UpdateMasterNodesOfInterest();
   contact_->GetMasterNodesDistancesToSlaveElements(&dist_);
 
@@ -319,6 +355,7 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
   //    VecCopy(target, dist_);
   //    VecAXPY(dist_, -1, tmpNodes_);
   //    VecAXPY(dist_,1,ds);
+  // calculate initial norm for stop criteria
   Vec subDist;
   PetscScalar norm = 0;
   VecGetSubVector(dist_, masterNodesIndices_, &subDist);
@@ -328,19 +365,23 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
   Petsc::print << "Estimate ";
   Petsc::print << norm << "\n";
   int i = 0;
+  // get absolute and relative tolerance from .xml-script for the stop criteria
   TFloat abs = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.AbsTol", 1e-4);
   TFloat rel = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.RelTol", 1e-4);
 
-  while (i < 5 && norm > abs) {
+  // iterative estimation loop
+  while (i < 5 && norm > abs) { // part of the stop cirteria
     //        TFloat nu_ = 0.1;
     //        VecScale(tmpNodes_, (1-nu_));
     //        VecAXPY(tmpNodes_, nu_, prevNodes);
     //        VecCopy(tmpNodes_, nodes_);
     //        contact_->SetAlpha(alpha);
+
+    //do estimator step
     EstimatorStep(time, i);
 
     //        contact_->SetAlpha(contact_->GetAlpha()/100);
-    contact_->Apply(time);
+    contact_->Apply(time); // apply from ContactHandling
     UpdateGhostNodesAndLinkToAdapter();
     CreateNodesJacobianAndLinkToAdapter();
     UpdateActiveStress(time);
@@ -351,7 +392,7 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
     CreateNodesJacobianAndLinkToAdapter();
 
     VecZeroEntries(dist_);
-    contact_->Apply(time);
+    contact_->Apply(time); // apply from ContactHandling
     UpdateMasterNodesOfInterest();
     contact_->GetMasterNodesDistancesToSlaveElements(&dist_);
     VecGetSubVector(dist_, masterNodesIndices_, &subDist);
@@ -360,7 +401,7 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
 
     Petsc::print << norm << "\n";
 
-    if (fabs(lastNorm - norm) < rel)
+    if (fabs(lastNorm - norm) < rel) // second part of stop criteria
       break;
     else
       i++;
@@ -389,10 +430,11 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
   CreateNodesJacobianAndLinkToAdapter();
 
   //  rc = CBSolverEquilibrium::SolverStep(time);
-
+  // cleanup
   VecDestroy(&target);
   VecDestroy(&prevNodes);
 
+  // Handle success and failure and update active stress data
   if (rc == CBStatus::FAILED) {
     PetscScalar *t;
     VecGetArray(ti1_, &t);
@@ -417,6 +459,7 @@ CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
 } // CBSolverActiveStressEstimator::SolverStep
 
 CBStatus CBSolverActiveStressEstimator::EstimatorStep(PetscScalar time, int step) {
+  // switch to T4 elements (start of the active tension estimation)
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT4();
@@ -424,8 +467,8 @@ CBStatus CBSolverActiveStressEstimator::EstimatorStep(PetscScalar time, int step
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT4();
   }
 
+  // allocation of arrays
   Vec subDist;
-
 
   Mat dfdtau;
   Mat subdfdtau;

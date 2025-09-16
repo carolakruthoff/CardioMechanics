@@ -60,8 +60,7 @@ CBStatus CBSolverEquilibrium::CalcNodalForces(Vec displacement, Vec forces) {
     
     VecCopy(Base::nodes_, displacedNodes);
     VecAXPY(displacedNodes, 1, displacement);
-    
-    
+
     if (DCCtrl::IsParallel()) {
         VecGhostUpdateBegin(displacedNodes, INSERT_VALUES, SCATTER_FORWARD);
         VecGhostUpdateEnd(displacedNodes, INSERT_VALUES, SCATTER_FORWARD);
