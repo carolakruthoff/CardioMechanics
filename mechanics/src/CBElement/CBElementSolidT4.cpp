@@ -145,7 +145,7 @@ void CBElementSolidT4::CalcDeformationTensorWithLocalBasis(const TFloat *nodesCo
 
 // TODO: remove activeStress from function arguments, communication should now rather happen over the TensionModel (e.g. CBFileTension)
 CBStatus CBElementSolidT4::CalcNodalForcesHelperFunction(const TFloat *nodesCoords, const bool *boundaryConditions, Matrix3<TFloat> *activeStress, TFloat *forces) {
-// ad Matrix3<TFloat> *activeStress from Eki's version
+// add Matrix3<TFloat> *activeStress from Eki's version
     CBStatus rc;
     
     Matrix3<TFloat> deformationTensor;

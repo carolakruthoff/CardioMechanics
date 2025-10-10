@@ -28,10 +28,7 @@
 #include <algorithm>
 #include <iterator>
 
-#include "CBSolverActiveStressTensorEstimator.h"
-#include "CBContactHandling.h"
-#include "CBElementSolidT10T4.h"
-#include "CBElementSolidT10RIT4.h"
+
 
 #include "petscversion.h"
 #ifndef MY_PETSC_VERSION
@@ -43,20 +40,29 @@
 # include <petsc-private/matimpl.h> // for MatAXPY (sparse version of MatAXPY) -- petsc <= 3.5
 #endif // if (MY_PETSC_VERSION >= 30600)
 
+#include "CBSolverActiveStressTensorEstimator.h"
+#include "CBContactHandling.h"
+#include "CBElementSolidT10T4.h"
+#include "CBElementSolidT10RIT4.h"
+
 /// initializes the inverse solver
 void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel *model) {
+  // call init function from parent class
   CBSolverEquilibrium::Init(parameters, model);
 
+  // initialize active stress object
   activeStress_ = new CBDataCtrl;
   activeStress_->Init(GetNumberOfElements());
   SetActiveStressDataSource(activeStress_);
 
+  // allocate vectors for displacement
   VecDuplicate(nodes_, &dx_);
   VecZeroEntries(dx_);
+  // initialize objects of ContactHandling and DetermineNodalForces
   contact_ = 0;
   nForces_ = 0;
 
-  // find Contact Handling Plugin
+  // find Contact Handling Plugin, throws error, if it's not there
   for (auto &p : plugins_) {
     if (dynamic_cast<CBContactHandling *>(p) != 0)
       contact_ = dynamic_cast<CBContactHandling *>(p);
@@ -71,63 +77,72 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
   //    if(nForces_ == 0)
   //        throw std::runtime_error("void CBParameterEstimator::Init(): DetermineNodalForces plugin is needed for parameter estimation");
 
-
+  // mat_: list of material indices (consider only elements with these material)
   mat_ = parameters_->GetArray<TInt>("Solver.ActiveStressEstimator.Materials", {});
+  // allocate vectors
   std::set<TInt> nodesOfInterest;
-
-  // TODO: Wo liegt der Unterschied? elements und threeElements? Eines für nur-stress, das andere fuer die stress+Fasern. Ist der erste damit ueberfluessig?
+  // eki: Wo liegt der Unterschied? elements und threeElements? Eines für nur-stress, das andere fuer die stress+Fasern. Ist der erste damit ueberfluessig?
   std::set<TInt> elementsOfInterest;
-  std::set<TInt> threeElementsOfInterest;
+  std::set<TInt> threeElementsOfInterest; // diff to CBSolverActiveStressEstimator
 
+  // switch to element type T4 if necessary
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT4();
     if (dynamic_cast<CBElementSolidT10RIT4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT4();
-
+  // see if the elements have the materialnumber(s) specified in the list
     if (mat_.size() != 0) {
       if (find(mat_.begin(), mat_.end(), i->GetMaterialIndex()) == mat_.end())
         continue;
     }
-
+  // for each solid element of interest (of specified material) get all node indices of this element
+  // save the node indices in nodesofInterest
     for (int j = 0; j < i->GetNumberOfNodesIndices(); j++) {
       nodesOfInterest.insert(i->GetNodeIndex(j));
     }
 
+    // diff to CBSolverActiveStressEstimator (next 5 lines)
+    // get indices for threeElements of interest
     auto index = i->GetIndex();
     elementsOfInterest.insert(index);
     threeElementsOfInterest.insert(3*index);
     threeElementsOfInterest.insert(3*index+1);
     threeElementsOfInterest.insert(3*index+2);
   }
-
+  // there are 3 values for each node of interest -> n: amount of evaluation point components
   numNodesOfInterestIndices_ = 3*nodesOfInterest.size();
   numElementOfInterestIndices = elementsOfInterest.size();
-  numThreeElementOfInterestIndices = threeElementsOfInterest.size();
+  numThreeElementOfInterestIndices = threeElementsOfInterest.size(); // diff to CBSolverActiveStressEstimator
 
   PetscInt *ni = new PetscInt[numNodesOfInterestIndices_];
   elementsOfInterestMapping_ = new PetscInt[numElementOfInterestIndices];
+  // diff to CBSolverActiveStressEstimator (next 6 lines)
+  // allocate matrices
   threeElementsOfInterestMapping_ = new PetscInt[numThreeElementOfInterestIndices];
+  // maps indices of elements of interest to corresponding solid element indices
   int cc = 0;
   elementOfInterestIndexToSolidElementIndexMapping_ = new TInt[numElementOfInterestIndices];
   DCCtrl::print << "numElementOfInterestIndices " << numElementOfInterestIndices << "\n";
-
-
+  // diff to CBSolverActiveStressEstimator (next 7 lines)
   for (auto &i : solidElements_) {
     if (elementsOfInterest.find(i->GetIndex()) != elementsOfInterest.end()) {
       elementOfInterestIndexToSolidElementIndexMapping_[cc] = i->GetIndex();
       cc++;
     }
   }
-  DCCtrl::print << "cc " << cc << "\n";
+  DCCtrl::print << "cc " << cc << "\n"; // probably for debugging
 
   std::set<TInt>::iterator it = nodesOfInterest.begin();
 
+  // nim: number of nodes of interest mapping (?)
   nim_ = new PetscInt[numNodes_];
 
   for (int i = 0; i < numNodes_; i++)
     nim_[i] = -1;
 
+  // For each node in nodesOfInterest, maps its global index to a local index in nim_
+  // and fills ni with triplets of indices for x, y, z components
   for (int i = 0; i < nodesOfInterest.size(); i++) {
     nim_[*it] = i;
     ni[3 * i + 0] = 3* *it + 0;
@@ -135,13 +150,16 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
     ni[3 * i + 2] = 3* *it + 2;
     it++;
   }
-
+  // retrieves number of target nodes if they are given in the .xml script
   TInt numTargets = parameters_->Get<TInt>("Solver.ActiveStressEstimator.NumberOfTargetNodes", -1);
 
   // thikonov_ = parameters_->Get<TInt>("Solver.ActiveStressEstimator.Thikonov",0);
   // if(thikonov_ != 0 && thikonov_ != 1 && thikonov_ != 2 )
   //     throw std::runtime_error("void CBSolverActiveStressTensorEstimatorNewmarkBeta::Init(ParameterMap* parameters, CBModel* model");
 
+  // li_ are penalty parameters for the thikonov regularization, they can all be set to 0
+  // it is advised to set 1 to 2 of these parameters unequal to 0, but never all
+  // these parameters unequal to zero are defined in the .xml script
   l1_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l1", 0);
   l2_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l2", 0);
   l3_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l3", 0);
@@ -150,6 +168,7 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
   l6_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l6", 0);
   l7_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l7", 0);  // currently unused in tensor estimator
 
+  // diff to CBSolverActiveStressEstimator (next 11 lines)
   // more parameters, probably for fiber regularisation, currently unused
   l8_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l8", 0);
   l9_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l9", 0);
@@ -162,33 +181,37 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
   l16_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l16", 0); // laplace regularization of fiber rotation velocity
   l17_ = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.l17", 0);
 
+  // We want a deterministic initialization of the random number -> fixed seed for random number generation
+  srand(0);
 
-  srand(0);// We want a deterministic initialization of the random number.
-
+  // m: amount of elements of interest
   std::set<TInt> m = contact_->GetMasterNodesLocalIndices();
   std::set<TInt> m2;
 
+  // write only master nodes that are also nodes of interest in m2
   for (auto i = m.begin(); i != m.end(); i++)
     if (nodesOfInterest.find(*i) != nodesOfInterest.end())
       m2.insert(*i);
 
   int r = m2.size() / numTargets;
   if ((r <= 1) || (numTargets == -1)) {
+    // mn: Masternodes of interest (?)
     mn_ = m2;
-  } else {
+  } else { // if numTargets is specified it randomly selects a subset of master nodes
     for (auto i : m2) {
       if (rand() % r == 0)
         mn_.insert(i);
     }
   }
 
-
+  // allocate arrays for mapping
   numMasterNodesIndices_ = 3*mn_.size();
   masterNodesIndicesMapping_  = new PetscInt[numMasterNodesIndices_];
   masterNodesIndicesNodesOfInterestMapping_ = new PetscInt[numMasterNodesIndices_];
 
   it = mn_.begin();
 
+  //Master nodes are mapped to their global and local indices
   for (int i = 0; i < mn_.size(); i++) {
     PetscInt j = nim_[*it];
     if (j == -1)
@@ -204,34 +227,41 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
     it++;
   }
 
-
+  // map elements of interest to their indices
   it = elementsOfInterest.begin();
   for (int i = 0; i < elementsOfInterest.size(); i++) {
     elementsOfInterestMapping_[i] = *it;
     it++;
   }
 
+  // diff to CBSolverActiveStressEstimator (next 6 lines)
+  // map local to global indices for three elements of Interest
   it = threeElementsOfInterest.begin();
   for (int i = 0; i < threeElementsOfInterest.size(); i++) {
-    // Was sind threeElementsOfInterest ? (fuer Submatrix) Jetzt drei Werte statt einem: stress + phi + theta
+    // eki: Was sind threeElementsOfInterest ? (fuer Submatrix) Jetzt drei Werte statt einem: stress + phi + theta
     threeElementsOfInterestMapping_[i] = *it;
     it++;
   }
 
+  // Create PETSc index sets (IS) for master nodes, elements and nodes of interest (efficient data access)
   ISCreateGeneral(
     Petsc::Comm(), numMasterNodesIndices_, masterNodesIndicesMapping_, PETSC_COPY_VALUES, &masterNodesIndices_);
   ISCreateGeneral(
     Petsc::Comm(), numElementOfInterestIndices, elementsOfInterestMapping_, PETSC_COPY_VALUES,
     &elementsOfInterestIndices_);
+  // diff to CBSolverActiveStressEstimator (next 3 lines)
   ISCreateGeneral(
     Petsc::Comm(), numThreeElementOfInterestIndices, threeElementsOfInterestMapping_, PETSC_COPY_VALUES,
     &threeElementsOfInterestIndices_);
 
   ISCreateGeneral(Petsc::Comm(), numNodesOfInterestIndices_, ni, PETSC_COPY_VALUES, &nodesOfInterestIndices_);
+  // duplicates nodes_ into dist_ -> storing distances or residuals
   VecDuplicate(nodes_, &dist_);
-  int counter = 0;
+  int counter = 0;   // diff to CBSolverActiveStressEstimator
+  // Switch to T10 elements, this is usually done at the end of the estimator step
+  // since the estimation is done with T4 elements, independent of the type of mesh elements
   for (auto &i : solidElements_) {
-    counter++;
+    counter++;   // diff to CBSolverActiveStressEstimator
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT10();
     if (dynamic_cast<CBElementSolidT10RIT4 *>(i) != 0)
@@ -239,12 +269,12 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
   }
   DCCtrl::print << "switched " << counter << " elements to T4\n";
 
-  // TODO: Was macht die ElementLaplacian? -> raeumlich Regularisierung (steht in lTl_)
+  // set up laplacian matrix (spatial smoothing regularization)
   GenerateElementLaplacian();
-
+  // creates and duplicates Petsc vectors
   // TODO: Ist ti_ die Loesung aus dem letzten Zeitschritt? -> fuer zeitliche Regularisierung? aktueller Zeitschritt, ti_ -> T_{i}
   GenerateElementLaplacianFibers();
-  Petsc::CreateSeqVector(numThreeElementOfInterestIndices, &ti_);
+  Petsc::CreateSeqVector(numThreeElementOfInterestIndices, &ti_);  // diff to CBSolverActiveStressEstimator
   VecDuplicate(ti_, &ti1_);
   VecDuplicate(ti_, &ti2_);
 
@@ -257,20 +287,25 @@ void CBSolverActiveStressTensorEstimator::Init(ParameterMap *parameters, CBModel
   //
   //    adapter_->LinkNodesComponentsBoundaryConditionsGlobal(bc);
 
-  delete[] ni;
-} // CBSolverActiveStressTensorEstimator::Init
+  // deletes temporary array ni
+  delete ni;
+} // CBSolverActiveStressEstimator::Init
 
-/// take only nodes that possess a partner in the contact problem
+/// eki: take only nodes that possess a partner in the contact problem
 void CBSolverActiveStressTensorEstimator::UpdateMasterNodesOfInterest() {
+  // update mapping for master nodes of interest
+
+  // allocate arrays for master nodes
   std::set<TInt> mn;
   std::set<TInt> m = contact_->GetMasterNodesLocalIndices();
   std::set<TInt> m2;
 
+  // write all master nodes, that are nodes of interest (in mn_) into the mn array
   for (auto i = m.begin(); i != m.end(); i++)
     if (mn_.find(*i) != mn_.end())
       mn.insert(*i);
 
-
+  // array allocation for master node mapping
   numMasterNodesIndices_ = 3*mn.size();
 
   if (masterNodesIndices_)
@@ -282,6 +317,7 @@ void CBSolverActiveStressTensorEstimator::UpdateMasterNodesOfInterest() {
   masterNodesIndicesMapping_  = new PetscInt[numMasterNodesIndices_];
   masterNodesIndicesNodesOfInterestMapping_ = new PetscInt[numMasterNodesIndices_];
 
+  //Master nodes are mapped to their global and local indices
   auto it = mn.begin();
 
   for (int i = 0; i < mn.size(); i++) {
@@ -300,19 +336,21 @@ void CBSolverActiveStressTensorEstimator::UpdateMasterNodesOfInterest() {
   }
 } // CBSolverActiveStressTensorEstimator::UpdateMasterNodesOfInterest
 
-/// the actual optimization / parameter estimation step, calls estimator + solver + processes the results
+/// eki: the actual optimization / parameter estimation step, calls estimator + solver + processes the results
 CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
+  // vector allocation
   Vec prevNodes;
   Vec target;
   Vec ds;
 
+  // switch element type to T10 (usually done after the estimator step)
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT10();
     if (dynamic_cast<CBElementSolidT10RIT4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT10();
   }
-
+  // in ActiveStressEstimator alpha is read at this point, but never used
   //    double beta = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.Beta",1e8);
 
 
@@ -328,9 +366,12 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
   // VecRestoreArray(lastSolution_, &t);
 
   //    contact_->SetAlpha(alpha);
+
+  // duplicate nodes_ into prevNodes
   VecDuplicate(nodes_, &prevNodes);
   VecCopy(nodes_, prevNodes);
 
+  // call UpdateActiveStress with the last timestep
   UpdateActiveStress(lastTime_);
   UpdateGhostNodesAndLinkToAdapter();
   CreateNodesJacobianAndLinkToAdapter();
@@ -357,7 +398,10 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
   //
   //    contact_->SetAlpha(beta);
   //    contact_->SwitchOn();
-  //
+
+  // call parent SolverStep in CBSolverEquilibrium for the current timestep
+  // the solution (of SolverStep) is the displacement to previous time step node coords
+  // rc is the status of the whole process (SUCCESS vs FAILED)
   rc = CBSolverEquilibrium::SolverStep(time);
 
   if (rc != CBStatus::SUCCESS)
@@ -366,6 +410,8 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
   if (time == timing_.GetStartTime())
     return rc;
 
+  //duplicate nodes into target and ds
+  // create copies of current node positions for use in the estimation loop
   VecDuplicate(nodes_, &target);
   VecDuplicate(nodes_, &ds);
   VecCopy(nodes_, target);
@@ -375,7 +421,7 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
 
   VecZeroEntries(dist_);
 
-  contact_->Apply(time);
+  contact_->Apply(time); // apply from ContactHandling
   UpdateMasterNodesOfInterest();
   contact_->GetMasterNodesDistancesToSlaveElements(&dist_);
 
@@ -386,6 +432,7 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
   //    VecCopy(target, dist_);
   //    VecAXPY(dist_, -1, tmpNodes_);
   //    VecAXPY(dist_,1,ds);
+  // calculate initial norm for stop criteria
   Vec subDist;
   PetscScalar norm = 0;
   VecGetSubVector(dist_, masterNodesIndices_, &subDist);
@@ -395,10 +442,12 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
   Petsc::print << "Estimate ";
   Petsc::print << norm << "\n";
   int i = 0;
+  // get absolute and relative tolerance from .xml-script for the stop criteria
   TFloat abs = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.AbsTol", 1e-4);
   TFloat rel = parameters_->Get<TFloat>("Solver.ActiveStressEstimator.RelTol", 1e-4);
 
-  while (i < 5 && norm > abs) {
+  // iterative estimation loop
+  while (i < 5 && norm > abs) { // part of the stop criteria
     //        TFloat nu_ = 0.1;
     //        VecScale(tmpNodes_, (1-nu_));
     //        VecAXPY(tmpNodes_, nu_, prevNodes);
@@ -409,12 +458,12 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
     // Estimate: compute as + fiber angles
     ///////////
 
-
+    // do estimator step
     EstimatorStep(time, i);
 
     //        contact_->SetAlpha(contact_->GetAlpha()/100);
-    contact_->Apply(time);
-    UpdateGhostNodesAndLinkToAdapter();             // TODO: Was sind die Ghost nodes? Was machen sie? -> Kommunikation am Rand (Parallelisierung)
+    contact_->Apply(time); // apply from ContactHandling
+    UpdateGhostNodesAndLinkToAdapter();             // Was sind die Ghost nodes? Was machen sie? -> Kommunikation am Rand (Parallelisierung)
     CreateNodesJacobianAndLinkToAdapter();
     UpdateActiveStress(time);
 
@@ -428,7 +477,7 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
     CreateNodesJacobianAndLinkToAdapter();
 
     VecZeroEntries(dist_);
-    contact_->Apply(time);
+    contact_->Apply(time); // apply from ContactHandling
     UpdateMasterNodesOfInterest();
     contact_->GetMasterNodesDistancesToSlaveElements(&dist_);
     VecGetSubVector(dist_, masterNodesIndices_, &subDist);
@@ -437,7 +486,7 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
 
     Petsc::print << norm << "\n";
 
-    if (fabs(lastNorm - norm) < rel)
+    if (fabs(lastNorm - norm) < rel) // second part of stop criteria
       break;
     else
       i++;
@@ -466,10 +515,11 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
   CreateNodesJacobianAndLinkToAdapter();
 
   //  rc = CBSolverEquilibrium::SolverStep(time);
-
+  // cleanup
   VecDestroy(&target);
   VecDestroy(&prevNodes);
 
+  // Handle success and failure and update active stress data
   if (rc == CBStatus::FAILED) { // Schrittweite zu gross?
     PetscScalar *t;
     VecGetArray(ti1_, &t);
@@ -479,14 +529,14 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
       // TODO: Zshg dTau, lastDtau <-> ti, ti1, ti2 (T_i, T_{i-1}, T_{i-2}) ?
       // TODO: Wo werden die Werte fuer dTau oder dt berechnet?
       //
-      activeStress_->Set(time, elementsOfInterestMapping_[i], -t[3*i]);
+      activeStress_->Set(time, elementsOfInterestMapping_[i], -t[3*i]); // 3*i: diff to CBSolverActiveStressEstimator
 
       // Fasern wieder zurueckdrehen ( in t[3*i+1] und t[3*i+2] ), oder? Stand bereits da :-)
       // TODO: Funktioniert das reversibel? -> Wahrscheinlich nicht -> in zwei Schritten machen
-      solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(0, t[3*i+2]);
-      solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(t[3*i+1], 0);
+      solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(0, t[3*i+2]); // diff to CBSolverActiveStressEstimator
+      solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(t[3*i+1], 0); // diff to CBSolverActiveStressEstimator
     }
-    VecRestoreArray(ti1_, &t);
+    VecRestoreArray(ti1_, &t); // pointer t is no langer valid after this call, I'm done accessing ti1_
     VecCopy(ti1_, ti_);
   } else {   // Schaetzer hat funktioniert
     VecCopy(ti1_, ti2_);
@@ -497,12 +547,12 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
 
     for (int i = 0; i < numElementOfInterestIndices; i++) {
       // TODO: !!! Hier muss noch etwas mit t[3*i+1] und t[3*i+2] geschehen?
-      t[3*i] = -activeStress_->Get(time, elementsOfInterestMapping_[i]);
+      t[3*i] = -activeStress_->Get(time, elementsOfInterestMapping_[i]); // 3*i: diff to CBSolverActiveStressEstimator
     }
     VecRestoreArray(ti1_, &t);
     VecCopy(ti1_, ti_);
 
-
+    // diff to CBSolverActiveStressEstimator (next 7 lines)
     // Winkelaenderung mit 0 initialisieren -> hat irgendwie nicht funktioniert (?)
     VecGetArray(ti_, &t);
     for (int i = 0; i < numElementOfInterestIndices; i++) {
@@ -516,6 +566,7 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
 } // CBSolverActiveStressTensorEstimator::SolverStep
 
 CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, int step) {
+  // switch to T4 elements (start of the active tension estimation)
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT4();
@@ -523,48 +574,55 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT4();
   }
 
+  // allocation of arrays
   Vec subDist;
 
-  Mat dfdtau;
-  Mat subdfdtau;
+  Mat dfdtau; // tangential stiffness matrix (change of nodal forces with respect to active stress)
+  Mat subdfdtau; // submatrix of tangential stiffness matrix
 
   UpdateGhostNodesAndLinkToAdapter();
+  // extract distances only for master nodes
   VecGetSubVector(dist_, masterNodesIndices_, &subDist);
 
 
-  Mat a;
-  Vec dtau;
-  Petsc::CreateSeqVector(numThreeElementOfInterestIndices, &dtau);
-  Petsc::CreateSeqMatrix(3*numNodes_, 3*GetNumberOfElements(), 5000, &dfdtau);
+  Mat a; // product of reduced inverse of stiffness matrix and K_T describing change of all nodal forces
+  Vec dtau; // small change of active tension
+  Petsc::CreateSeqVector(numThreeElementOfInterestIndices, &dtau); // 'numThreeElement': diff to CBSolverActiveStressEstimator
+  Petsc::CreateSeqMatrix(3*numNodes_, 3*GetNumberOfElements(), 5000, &dfdtau); // 3*i: diff to CBSolverActiveStressEstimator
 
   ////
   // determine parameters, compute the derivatives for active stress and fiber rotation
   ////
 
-  adapter_->LinkNodalForcesActiveStressTensorAndFiberOrientationJacobian(dfdtau);
-  formulation_->CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian();
-
+  adapter_->LinkNodalForcesActiveStressTensorAndFiberOrientationJacobian(dfdtau); // diff to CBSolverActiveStressEstimator
+  formulation_->CalcNodalForcesActiveStressTensorAndFiberOrientationJacobian(); // diff to CBSolverActiveStressEstimator
+  //formulation is an object ob CBSolverActiveStressEstimator
+  // stores tangential stiffness matrix in dfdtau
   MatAssemblyBegin(dfdtau, MAT_FINAL_ASSEMBLY);
   MatAssemblyEnd(dfdtau, MAT_FINAL_ASSEMBLY);
-  MatGetSubMatrix(dfdtau, nodesOfInterestIndices_, threeElementsOfInterestIndices_, MAT_INITIAL_MATRIX, &subdfdtau);
+  // extract submatrix of tangential stiffness matrix containing only nodes of interest
+  MatGetSubMatrix(dfdtau, nodesOfInterestIndices_, threeElementsOfInterestIndices_, MAT_INITIAL_MATRIX, &subdfdtau); // 'ThreeElement': diff to CBSolverActiveStressEstimator
 
+  // dense matrix for inverse of reduced stiffness matrix
   Mat inv;
   MatCreateSeqDense(Petsc::Comm(), numMasterNodesIndices_, numNodesOfInterestIndices_, 0, &inv);
 
+  // only enter this loop at step 0 or if the Inverse shouldn`t be reused
   if ((step == 0) || !(parameters_->Get<bool>("Solver.ActiveStressEstimator.ReUseInverse", false))) {
-    Mat subdfdx;
+    Mat subdfdx; // subset of matrix describing change of all nodal forces with respect to nodal displacement
     CBSolver::CalcNodalForcesJacobian();
     MatAssemblyBegin(nodalForcesJacobian_, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(nodalForcesJacobian_, MAT_FINAL_ASSEMBLY);
-
+    // calculation of subdfdx
     MatGetSubMatrix(nodalForcesJacobian_, nodesOfInterestIndices_, nodesOfInterestIndices_, MAT_INITIAL_MATRIX,
                     &subdfdx);
     Mat subdfdxT;
+    // transpose subdfdx
     MatTranspose(subdfdx, MAT_INITIAL_MATRIX, &subdfdxT);
 
+    // Compute LU factorization of subdfdxT using MUMPS
     IS iperm;
     IS perm;
-
     Mat f;
     MatGetOrdering(subdfdxT, MATORDERINGND, &perm, &iperm);
     MatGetFactor(subdfdxT, MATSOLVERMUMPS, MAT_FACTOR_LU, &f);
@@ -583,7 +641,8 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
     // MatDuplicate(b, MAT_DO_NOT_COPY_VALUES, &inv);
     DCCtrl::print << "Dim " << numMasterNodesIndices_ << " x " << numNodesOfInterestIndices_ << "\n";
 
-    Vec ba;
+    // Solves a series of linear equations to compute the inverse matrix
+    Vec ba; // right hand side vector, set up for each master node, with 1 at corresponding position
     Vec e;
     Petsc::CreateSeqVector(numNodesOfInterestIndices_, &ba);
     VecDuplicate(ba, &e);
@@ -600,6 +659,8 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
       VecAssemblyEnd(ba);
       VecZeroEntries(e);
       MatSolve(f, ba, e);
+      // according to LeChat: solves subdfdxT * e = ba to get column of the inverse
+      // inverse at this point is L
       if (((i*100)/numMasterNodesIndices_+1)%10 == 0)
         DCCtrl::print << "\xd\t" << ((i*100)/numMasterNodesIndices_+1) <<"%                          ";
       PetscScalar *vals;
@@ -608,9 +669,11 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
       MatSetValues(inv, 1, &i, numNodesOfInterestIndices_, ind, vals, INSERT_VALUES);
       VecRestoreArray(e, &vals);
     }
+    // assemble inverse matrix
     MatAssemblyBegin(inv, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(inv, MAT_FINAL_ASSEMBLY);
 
+    // cleanup
     VecDestroy(&ba);
     VecDestroy(&e);
     MatDestroy(&f);
@@ -620,12 +683,16 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
     ISDestroy(&perm);
     delete[] ind;
 
+    // check if inv_ is a nullpointer -> if yes create a matrix inv_ as duplicate of inv
+    // but do not copy the values from inv
     if (inv_ == 0)
       MatDuplicate(inv, MAT_DO_NOT_COPY_VALUES, &inv_);
 
+    // assemble inverse matrix in inv_
     MatCopy(inv, inv_, DIFFERENT_NONZERO_PATTERN);
     MatAssemblyBegin(inv_, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(inv_, MAT_FINAL_ASSEMBLY);
+    // reuse previous inverse if applicable
   } else {
     Petsc::debug << "Reusing previous matrix\n";
     MatCopy(inv_, inv, DIFFERENT_NONZERO_PATTERN);
@@ -633,8 +700,9 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
     MatAssemblyEnd(inv, MAT_FINAL_ASSEMBLY);
   }
 
-
+  // compute a = inv * subdfdtau = L * k^_d
   MatMatMult(inv, subdfdtau, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &a);
+  //compute aTa = a^T * a
 
   // hier ist alles dreimal so gross, wg Definition von subdfdtau
   Mat aTa;
@@ -643,12 +711,15 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
   MatTransposeMatMult(a, a, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &aTa);  // ### A^T*A, bzw. die linke Seite um Ableitung=0 zu bestimmen
   DCCtrl::print << "Compute aTa... OK, took " << double(clock() - startTime) / (double)CLOCKS_PER_SEC<< " seconds.\n";
 
-  Vec d;
+  // Apply tikhonov regularization terms to stabilize solution
+  // each regularization term adds a weighted identity or Laplacian matrix to aTa and adjusts d
+  Vec d; // right-hand side vector
   VecDuplicate(dtau, &d);
   VecScale(subDist, 1);
   MatMultTranspose(a, subDist, d);  // ### d = A^T g, bzw. die rechte Seite um Ableitung 0 zu bestimmen
 
-  Vec dd;
+  Vec dd; // temporary vector
+  // in ActiveStressEstimator there is also a dd2
   VecDuplicate(dtau, &dd);
 
   // if(thikonov_ == 0)
@@ -694,6 +765,7 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
    */
 
 
+  // diff to ActiveStressEstimator
   // useful indices for setting values during regularization
   PetscInt *stressIndices;
   PetscInt *phiIndices;
@@ -710,12 +782,13 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
 
   // TODO: Das leider 1 zu 1 die Regularisierungsterme fuer die aktiven Kraefte, aber Fasern brauchen evtl etwas anderes
   // -> nur jeden dritten Eintrag setzen?
+  // Applying regularization terms
   if (l1_ != 0) {
     VecSet(dd, l1_);
     MatDiagonalSet(aTa, dd, ADD_ALL_VALUES);  // aTa = aTa + dd
   }
 
-  // Was machen die Vektoren ti_, ti1, ti2 ? -> Daten aus letztem und vorletztem Zeitschritt
+  // eki: Was machen die Vektoren ti_, ti1, ti2 ? -> Daten aus letztem und vorletztem Zeitschritt
   if (l2_ != 0) {
     VecSet(dd, l2_);
     MatDiagonalSet(aTa, dd, ADD_ALL_VALUES);
@@ -745,12 +818,13 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
   }
 
   if (l6_ != 0) {
-    MatAXPY(aTa, l6_, lTl_, DIFFERENT_NONZERO_PATTERN); // sparse Matrix version
-    MatMult(lTl_, ti_, dd);
-    VecAXPY(d, -l6_, dd);
+    // sparse Matrix version
+    MatAXPY(aTa, l6_, lTl_, DIFFERENT_NONZERO_PATTERN);  // aTa = aTa + l6_ * lTl_
+    MatMult(lTl_, ti_, dd);                                    //  dd = lTl_ * ti_
+    VecAXPY(d, -l6_, dd);                                     //   d = d - l6 * dd
   }
 
-
+  // diff to ActiveStressEstimator (if for l12 and l16 as well as the 3 deletes afterwards)
   // regularization for minimal d-phi, d-theta (minimal rotation change)
   if (l12_ != 0) {
     VecSet(dd, 0);
@@ -784,6 +858,8 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
   // -- -- -- -- -- -- -- -- -- --- -- --- ---
   DCCtrl::print << "ksp...\n";
   startTime = clock();
+  // Set up linear solver (KSP) with direct LU factorization
+  // uses MUMPS
   KSP ksp;
   KSPCreate(Petsc::Comm(), &ksp);
   PC pc;
@@ -793,14 +869,16 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
   KSPSetFromOptions(ksp);
 
   // PCSetType(pc, PCLU);
-  PCSetType(pc, PCCHOLESKY);
+  PCSetType(pc, PCCHOLESKY); // diff type than in ActiveStressEstimator
+  // Cholesky factorization is specialized for symmetric positive definite matrices
 
   KSPSetOperators(ksp, aTa, aTa);
 
-  // TODO: !!! Das dauert lange, koennte man das vllt nur ein einziges Mal initialisieren und spaeter die Matrizen tauschen?
+  // TODO: !!! Das dauert lange, koennte man das vlt nur ein einziges Mal initialisieren und spaeter die Matrizen tauschen?
   DCCtrl::print << "ksp setup...\n";
   KSPSetUp(ksp);
   DCCtrl::print << "ksp solve...\n";
+  // solves linear system aTa * dtau = d to find changes in active stress (dtau)
   KSPSolve(ksp, d, dtau);
   DCCtrl::print << "ksp... OK, took " << double(clock() - startTime) / (double)CLOCKS_PER_SEC<< " seconds.\n";
 
@@ -811,16 +889,17 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
 
   VecGetArray(dtau, &t);
   VecGetArray(ti_, &t2);
-
+  // update active stress values for each element of interest (potentially have to edit this?!)
   // Beschraenkung der maximalen AS-Werte auf 10.000
   for (int i = 0; i < numElementOfInterestIndices; i++) {
     TFloat val = activeStress_->Get(lastTime_, elementsOfInterestMapping_[i]);
 
+    // diff to ActiveStressEstimator: all factors 3*i for the following if conditions
     if (t[3*i] > 10000)
       t[3*i] = 10000;
     else if (t[3*i] < -10000)
       t[3*i] = -10000;
-
+    // applies bounds to change in stress to ensure numerical stability
     if ((val - t[3*i]) < 0) {
       t[3*i] = val;
       activeStress_->Set(time, elementsOfInterestMapping_[i], val - t[3*i]);
@@ -841,28 +920,29 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
     //            activeStress_->Set(time,elementsOfInterestMapping_[i], val - t[i]);
     //        }
     else {
-      activeStress_->Set(time, elementsOfInterestMapping_[i], val - t[3*i]);
+      activeStress_->Set(time, elementsOfInterestMapping_[i], val - t[3*i]); // 3*i: diff to ActiveStressEstimator
     }
 
     // TODO: dTau_ oder t2?
     // TODO: !!! wird letztlich mit t (dtau) oder t2 (ti) gerechnet?
     // TODO: muss hier dTau_ noch ersetzt werden?
-    t2[3*i] += t[3*i];
+    t2[3*i] += t[3*i]; // 3*i: diff to ActiveStressEstimator
 
     // dTau_[3*i] += t[3*i];
     // dTau_[3*i+1] += t[3*i+1];
     // dTau_[3*i+2] += t[3*i+2];
 
-    t2[3*i+1] = t[3*i+1];
-    t2[3*i+2] = t[3*i+2];
+    t2[3*i+1] = t[3*i+1]; // diff to ActiveStressEstimator
+    t2[3*i+2] = t[3*i+2]; // diff to ActiveStressEstimator
 
     solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(-t[3*i+1], 0);
     solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(0, -t[3*i+2]);
   }
-
+  // update active stress data structure with new values
   VecRestoreArray(dtau, &t);
   VecRestoreArray(ti_, &t2);
 
+  // cleanup
   MatDestroy(&nodalForcesJacobian_);
   MatDestroy(&inv);
   MatDestroy(&a);
@@ -874,57 +954,69 @@ CBStatus CBSolverActiveStressTensorEstimator::EstimatorStep(PetscScalar time, in
   VecDestroy(&d);
   VecDestroy(&dd);
   KSPDestroy(&ksp);
+  // switch to element type T10
   for (auto &i : solidElements_) {
     if (dynamic_cast<CBElementSolidT10T4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10T4 *>(i)->SwitchToT10();
     if (dynamic_cast<CBElementSolidT10RIT4 *>(i) != 0)
       dynamic_cast<CBElementSolidT10RIT4 *>(i)->SwitchToT10();
   }
+  // update last estimator time step and return success status
   lastEstimatorTimeStep_ = time;
   lastTime_ = time;
   return CBStatus::SUCCESS;
 } // CBSolverActiveStressTensorEstimator::EstimatorStep
 
-/// fills elementLaplacian_ with entries, actually just a connectivity matrix for regularization
+/// eki: fills elementLaplacian_ with entries, actually just a connectivity matrix for regularization
 void CBSolverActiveStressTensorEstimator::GenerateElementLaplacian() {
   Mat cMat, subCMat; // C
   Vec diag;
   Vec b;
-
+  // create sequential sparse matrix (cMat) with dimensions equal to number of solid elements
+  // 3*: diff to ActiveStressEstimator (in next 2 lines)
   Petsc::CreateSeqMatrix(3*GetNumberOfSolidElements(), 3*GetNumberOfSolidElements(), 100, &cMat);  // C-Matrix, connectivity
   Petsc::CreateSeqVector(3*GetNumberOfSolidElements(), &diag);                                  // diag-Matrix
+  // create vector of same size as cMat, initialize to 0
   VecSet(diag, 0);
 
-  int max = 0;
+  int max = 0; // diff to ActiveStressEstimator
+  // iterate over all solid elements
+  // build connectivity matrix where each element is connected to its neighbors
   for (auto &e : solidElements_) {
-    int counter = 0;
+    int counter = 0; // diff to ActiveStressEstimator
+    // retrieve neighbor for each element (share common face)
     std::unordered_set<TInt> neighbors = adapter_->GetSolver()->GetModel()->GetSolidElementNeighborsCommonFace(
       e->GetIndex());
+    // sets value of cMat at position (e->GetIndex(), n) to -1 for each neighbor n
     for (auto &n : neighbors) {
+      // 3*: diff to ActiveStressEstimator (in next line)
       MatSetValue(cMat, 3*e->GetIndex(), 3*n, -1, INSERT_ALL_VALUES);                        // C-Matrix
       // MatSetValue(cMat,3*(*e)->GetIndex()+1,3*(*n)+1,-1,INSERT_ALL_VALUES);
       // MatSetValue(cMat,3*(*e)->GetIndex()+2,3*(*n)+2,-1,INSERT_ALL_VALUES);
-      counter++;
+      counter++; // diff to ActiveStressEstimator
     }
 
     // DCCtrl::print << "numNeighbors: " << counter << "\n";
-    if (counter > max) max = counter;
+    if (counter > max) max = counter; // diff to ActiveStressEstimator
   }
-  DCCtrl::print << "max numNeighbors: " << max << "\n";
+  DCCtrl::print << "max numNeighbors: " << max << "\n"; // diff to ActiveStressEstimator
 
-  MatDiagonalSet(cMat, diag, INSERT_ALL_VALUES);               // C = C + diag
-  VecDuplicate(diag, &b);              // b gets same size etc as diag, just allocates memory
-  VecSet(diag, 1);                     // change all entries to 1
-  MatMult(cMat, diag, b);              // b = C * diag
-  VecScale(b, -1);                      // b = -b
-
-  MatDiagonalSet(cMat, b, INSERT_ALL_VALUES);  // C = C + b
-
+  // set diagonal entries of cMat to 0
+  MatDiagonalSet(cMat, diag, INSERT_ALL_VALUES); // C = C + diag
+  VecDuplicate(diag, &b); // b gets same size etc as diag, just allocates memory
+  VecSet(diag, 1); // change all entries to 1
+  // b = cMat*diag (row sums)
+  MatMult(cMat, diag, b); // b = C * diag
+  VecScale(b, -1); // b = -b
+  // set diagonal entries of cMat to values in b
+  MatDiagonalSet(cMat, b, INSERT_ALL_VALUES); // C = C + b
+  // assemble cMat
   MatAssemblyBegin(cMat, MAT_FINAL_ASSEMBLY);
   MatAssemblyEnd(cMat, MAT_FINAL_ASSEMBLY);
+  //extract submatrix for elements of interest
+  MatGetSubMatrix(cMat, threeElementsOfInterestIndices_, threeElementsOfInterestIndices_, MAT_INITIAL_MATRIX, &subCMat); // 'threeElements': diff to ActiveStressEstimator
 
-  MatGetSubMatrix(cMat, threeElementsOfInterestIndices_, threeElementsOfInterestIndices_, MAT_INITIAL_MATRIX, &subCMat);
-
+  // next commented part is used in ActiveStressEstimator
   // MatCreateSeqDense(Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 0, &elementLaplacian_);
   // ------------------
   // MatCreateSeqAIJ(Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 0, 0, &elementLaplacian_);
@@ -934,27 +1026,28 @@ void CBSolverActiveStressTensorEstimator::GenerateElementLaplacian() {
 
   // MatDuplicate(subCMat, MAT_DO_NOT_COPY_VALUES, &lTl_);
 
-  DCCtrl::print << "############################### generate elem Laplacian: \n";
+  DCCtrl::print << "############################### generate elem Laplacian: \n"; // diff to ActiveStressEstimator
 
   // MatTransposeMatMult(elementLaplacian_, elementLaplacian_,MAT_INITIAL_MATRIX , PETSC_DEFAULT, &lTl_);
   // MatView(lTl_, PETSC_VIEWER_STDOUT_WORLD);
 
 
   Mat spLaplacian;
+  // create and duplicate element laplacian (copy subCMAt into it)
   MatCreateSeqAIJ(
-    Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 20, NULL, &spLaplacian);
-  MatCopy(subCMat, spLaplacian, DIFFERENT_NONZERO_PATTERN);
-  Mat splTl;
-  MatCreateSeqAIJ(Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 20, NULL, &splTl);
+    Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 20, NULL, &spLaplacian); // diff to ActiveStressEstimator
+  MatCopy(subCMat, spLaplacian, DIFFERENT_NONZERO_PATTERN); // diff to ActiveStressEstimator
+  Mat splTl;  // diff to ActiveStressEstimator
+  MatCreateSeqAIJ(Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 20, NULL, &splTl); // diff to ActiveStressEstimator
+  // represents stiffness-like operator)
+  MatTransposeMatMult(spLaplacian, spLaplacian, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &splTl); // diff to ActiveStressEstimator
 
-  MatTransposeMatMult(spLaplacian, spLaplacian, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &splTl);
-
-  MatCreateSeqAIJ(Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 20, NULL, &lTl_);
-  MatCopy(splTl, lTl_, DIFFERENT_NONZERO_PATTERN);
+  MatCreateSeqAIJ(Petsc::Comm(), numThreeElementOfInterestIndices, numThreeElementOfInterestIndices, 20, NULL, &lTl_);  // diff to ActiveStressEstimator
+  MatCopy(splTl, lTl_, DIFFERENT_NONZERO_PATTERN);  // diff to ActiveStressEstimator
 
 
-  DCCtrl::print << "############################### generate elem Laplacian: OK\n";
-
+  DCCtrl::print << "############################### generate elem Laplacian: OK\n";  // diff to ActiveStressEstimator
+  // cleanup
   MatDestroy(&cMat);
   MatDestroy(&subCMat);
   MatDestroy(&splTl);
@@ -964,7 +1057,7 @@ void CBSolverActiveStressTensorEstimator::GenerateElementLaplacian() {
   VecDestroy(&b);
 } // CBSolverActiveStressTensorEstimator::GenerateElementLaplacian
 
-/// fills elementLaplacianFibers_ with entries, actually just a connectivity matrix for Fiber regularization
+/// fills elementLaplacianFibers_ with entries, actually just a connectivity matrix for Fiber regularization (not existant in ActiveStressEstimator)
 void CBSolverActiveStressTensorEstimator::GenerateElementLaplacianFibers() {
   Mat cMat, subCMat; // C
   Vec diag;

@@ -689,7 +689,8 @@ CBStatus CBElementSolidT10::CalcNodalForcesJacobian() {
 } // CBElementSolidT10::CalcNodalForcesJacobian
 
 // from Eki's version
-CBStatus CBElementSolidT10::CalcNodalForcesActiveStressJacobian(int elementIndex) { // Calculate how the nodal forces depend on the active stress -> needed for the inverse problem of cardiac mechanics
+CBStatus CBElementSolidT10::CalcNodalForcesActiveStressJacobian(int elementIndex) {
+    // Calculate how the nodal forces depend on the active stress -> needed for the inverse problem of cardiac mechanics
   CBStatus rc;
   TFloat   nodesCoords[30];
   bool     boundaryConditions[30];

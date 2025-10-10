@@ -31,7 +31,7 @@ CBTensionEstimator::CBTensionEstimator( CBElement* e, ParameterMap* parameters )
     Tmax_ = e->GetMaterial()->GetProperties()->tensionMax_;
     activeTension_ = 0.0;
 
-    // every element hat its own activeTensionForQuadPoints_ only for its QPs
+    // every element has its own activeTensionForQuadPoints_ only for its QPs
     // there is no global activeTensionForQuadPoints_ vector
 /*    activeTensionForQuadPoints_.resize( e_->GetNumberOfQuadraturePoints() );
     Tmax_ = e->GetMaterial()->GetProperties()->tensionMax_;
@@ -42,20 +42,20 @@ CBTensionEstimator::CBTensionEstimator( CBElement* e, ParameterMap* parameters )
 
 //---------------------------------------------------------------------------------------------------
 /*!
- Get the active stress vector of the quadrature points; length = nrOfElemetns * nrQPs
+ Get the active stress vector of the quadrature points; length = nrOfElements * nrQPs
  \return active stress vector
  */
 // std::vector<TFloat> CBTensionEstimator::GetActiveTension()
 TFloat CBTensionEstimator::GetActiveTension()
 {
-    //ek717: added the multiplication with Tmax to be consistant with CalcActiveTension
+    //ek717: added the multiplication with Tmax to be consistent with CalcActiveTension
     return activeTension_*Tmax_;
 }
 
 
 //---------------------------------------------------------------------------------------------------
 /*!
- Calc Active Tension for the element based on the values asigned for the QPs ????? TODO
+ Calc Active Tension for the element based on the values assigned for the QPs ????? TODO
  return tension the value of the active tension for the current element
  */
 

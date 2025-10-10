@@ -49,7 +49,7 @@ public:
         // return activeStress * Matrix3<TFloat> {1, 0, 0, 0, 0, 0, 0, 0, 0};
     }
     //from Eki's version
-    // ek717: TODO: CalcActiveStressAtQuadPoint and SetActiveTensionForOneQuaraturePoint are only needed in the CBTensionExternalQuadPointsModel and it will not be called for others TensionModels...
+    // ek717: TODO: CalcActiveStressAtQuadPoint and SetActiveTensionForOneQuadraturePoint are only needed in the CBTensionExternalQuadPointsModel and it will not be called for others TensionModels...
     // sehr hesslich: TODO: impl only in the Child-Class, as it is only needed there
     virtual math_pack::Matrix3<double>  CalcActiveStressAtQuadraturePoint(const math_pack::Matrix3<double> &deformation,
                                                                           const double time, int indexQP) {
