@@ -271,7 +271,7 @@ CBStatus CBSolverEquilibrium::SolverStep(PetscScalar time, bool forceJacobianAnd
     
     UpdateInitialGuess(time);
     
-    VecAssemblyBegin(Base::nodes_);
+    VecAssemblyBegin(Base::nodes_); // in the documentation it says, that this should be called after completing all calls to VecSetValues
     VecAssemblyEnd(Base::nodes_);
     
     UpdateGhostNodesAndLinkToAdapter();
@@ -300,7 +300,7 @@ CBStatus CBSolverEquilibrium::SolverStep(PetscScalar time, bool forceJacobianAnd
     Base::kspIterations_ += kspIts;
     
     if ((snesReason <= 0) || (kspReason < 0)) {
-        VecSet(displacement_, 0);
+        VecSet(displacement_, 0); // displacement_ vector is in this>CBSolverEquilibrium
         return CBStatus::FAILED;
     }
     
