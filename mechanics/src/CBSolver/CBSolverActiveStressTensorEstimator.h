@@ -35,6 +35,7 @@ private:
     CBDetermineNodalForces* nForces_;
     void GenerateElementLaplacian();
     void GenerateElementLaplacianFibers();
+    void UpdateActiveStress(PetscScalar time) override;
     double lastTime_=0;
     IS masterNodesIndices_;
     IS nodesOfInterestIndices_;
