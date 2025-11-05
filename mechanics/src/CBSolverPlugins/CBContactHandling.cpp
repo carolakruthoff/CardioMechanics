@@ -316,6 +316,7 @@ void CBContactHandling::StepBack() {
     stepBack_ = true;
 }
 
+/// no difference to Apply in Eki's version
 void CBContactHandling::Apply(TFloat time) {
     if (!hasStarted_) {
         if (time > startTime_)
@@ -448,6 +449,7 @@ void CBContactHandling::ApplyToNodalForces() {
     VecRestoreArray(slaveElementsNodesSeq_, &slaveNodes);
 }  // CBContactHandling::ApplyToNodalForces
 
+/// no difference to Eki's version
 void CBContactHandling::GetMasterNodesDistancesToSlaveElements(Vec *distances) {
     if (!IsActive())
         return;
@@ -456,23 +458,24 @@ void CBContactHandling::GetMasterNodesDistancesToSlaveElements(Vec *distances) {
     DetermineSlaveElementsAtVertices();
     
     TFloat *slaveNodes;
-    VecGetArray(slaveElementsNodesSeq_, &slaveNodes);
+    VecGetArray(slaveElementsNodesSeq_, &slaveNodes); // make slaveNodes point to slaveElementNodesSeq_
     Vec cnt;
-    VecDuplicate(*distances, &cnt);
+    VecDuplicate(*distances, &cnt); //make cnt resemble distances
     
     VecZeroEntries(cnt);
-    VecZeroEntries(*distances);
+    VecZeroEntries(*distances); // ensure clean start
     
     for (auto e : masterElements_) {
         for (int i = 0; i < 3; i++) {
-            if (e->GetSlaveAtGaussPoint(i) == -1)
+            if (e->GetSlaveAtGaussPoint(i) == -1) // if there is no point at this position
                 continue;
             PetscInt nodesIndices[3] = {3*e->GetNodeIndex(i), 3*e->GetNodeIndex(i) + 1, 3*e->GetNodeIndex(i) + 2};
             PetscScalar d[3]         =
             {e->GetDistanceVectorToSlave(i)(0), e->GetDistanceVectorToSlave(i)(1), e->GetDistanceVectorToSlave(i)(2)};
-            VecSetValues(*distances, 3, nodesIndices, d, ADD_VALUES);
+            VecSetValues(*distances, 3, nodesIndices, d, ADD_VALUES); //add all 3 values of d at the position of the nodesIndices to *distances
             PetscScalar c[3] = {1, 1, 1};
-            VecSetValues(cnt, 3, nodesIndices, c, ADD_VALUES);
+            VecSetValues(cnt, 3, nodesIndices, c, ADD_VALUES); //add all 3 values of c at the position of the nodesIndices to cnt
+            // add count for each component, to see how many times each node contributes
         }
     }
     
@@ -484,20 +487,21 @@ void CBContactHandling::GetMasterNodesDistancesToSlaveElements(Vec *distances) {
     
     PetscScalar *c;
     PetscInt l = 0;
-    VecGetArray(cnt, &c);
+    VecGetArray(cnt, &c); // make c point to cnt
     
-    VecGetLocalSize(cnt, &l);
+    VecGetLocalSize(cnt, &l); // write size of cnt into l
     
     for (int i = 0; i < l; i++)
         if (c[i] == 0)
             c[i] = 1;
-    VecRestoreArray(cnt, &c);
+    VecRestoreArray(cnt, &c); // restore vector cnt, after VEcGetArray() has been called and the array is no longer needed
     
-    VecPointwiseDivide(*distances, *distances, cnt);
+    VecPointwiseDivide(*distances, *distances, cnt); // component-wise division *distances[i] = *distances[i]/cnt[i]
+    // -> avg distance
     VecAssemblyBegin(*distances);
     VecAssemblyEnd(*distances);
     VecDestroy(&cnt);
-    VecRestoreArray(slaveElementsNodesSeq_, &slaveNodes);
+    VecRestoreArray(slaveElementsNodesSeq_, &slaveNodes); // restore vector slaveElementsNodesSeq_, after VecGetArray() has been called and the array is no longer needed
 }  // CBContactHandling::GetMasterNodesDistancesToSlaveElements
 
 void CBContactHandling::ApplyToNodalForcesJacobian() {
