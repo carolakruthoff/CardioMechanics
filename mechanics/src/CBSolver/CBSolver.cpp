@@ -103,13 +103,14 @@ void CBSolver::InitMaterials() {
     
     for (auto &it : solidElements_) {
         auto matIndex = it->GetMaterialIndex();
-        if (materialIndexes.insert(matIndex).second) {
-            auto *mat = materialFactory_.New(parameters_, matIndex);
-            it->SetMaterial(mat);
-            materials_.insert(std::pair<TInt, CBMaterial *>(matIndex, mat));
+        if (materialIndexes.insert(matIndex).second) {// check if the matIndex is already part of materialIndexes...
+            //... return true if it hasn't been encountered before
+            auto *mat = materialFactory_.New(parameters_, matIndex); // create new material
+            it->SetMaterial(mat); // assign newly created material to current element
+            materials_.insert(std::pair<TInt, CBMaterial *>(matIndex, mat)); //store material for reuse
         } else {
-            CBMaterial *mat = materials_.find(matIndex)->second;
-            it->SetMaterial(mat);
+            CBMaterial *mat = materials_.find(matIndex)->second; // look up material
+            it->SetMaterial(mat); // reuse it and assign it to the current element
         }
     }
 }
