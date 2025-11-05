@@ -26,11 +26,11 @@ CBFileManager::~CBFileManager() {
 void CBFileManager::Init(ParameterMap* parameters, CBTiming* timing) {
     parameters_ = parameters;
     timing_ = timing;
-    
+
     // look in parameterMap for materials that need tension from files, and load/initialize the respective files
     std::vector<std::string> matStrings = parameters->GetChildNodes("Materials");
-    for (auto &mat : matStrings) {
-        if (parameters->Get<std::string>(mat + ".TensionModel", "None") == "File") {
+    for (auto &mat : matStrings) { // mat takes the values of each string in matStrings
+        if (parameters->Get<std::string>(mat + ".TensionModel", "None") == "File") { // überprüft, ob Tension Model für mein Material "File" ist
             TInt matIndex = -1; // TODO: find correct material, this could be somewhere in the elements where they get their GetMaterialIndex() entry, or where SetMaterialIndex() gets called, or in CBConstitutiveModel
             //TODO: Is this working?
             std::vector<std::string> tokens;
