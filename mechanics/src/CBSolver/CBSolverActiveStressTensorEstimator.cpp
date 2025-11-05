@@ -536,7 +536,7 @@ CBStatus CBSolverActiveStressTensorEstimator::SolverStep(PetscScalar time) {
       solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(0, t[3*i+2]); // diff to CBSolverActiveStressEstimator
       solidElements_[elementOfInterestIndexToSolidElementIndexMapping_[i]]->RotateFiberBy(t[3*i+1], 0); // diff to CBSolverActiveStressEstimator
     }
-    VecRestoreArray(ti1_, &t); // pointer t is no langer valid after this call, I'm done accessing ti1_
+    VecRestoreArray(ti1_, &t); // pointer t is no longer valid after this call, I'm done accessing ti1_
     VecCopy(ti1_, ti_);
   } else {   // Schaetzer hat funktioniert
     VecCopy(ti1_, ti2_);
