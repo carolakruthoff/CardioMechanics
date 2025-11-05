@@ -24,6 +24,10 @@ CBDataFromFile::CBDataFromFile() {
     timeDataBegin_ = 0;
     timeDataEnd_   = 0;
     isDataSetLoaded_ = false;
+    // manually set these values
+    // -> this is probably not valid, but necessary to get the simulation running
+    startTime_ = 0.0;
+    period_ = 1.0;
 }
 
 CBDataFromFile::CBDataFromFile(ParameterMap *parameters, std::string parameterKey) {
@@ -184,12 +188,13 @@ bool CBDataFromFile::LoadDataSet(TFloat time) {
 } // CBDataFromFile::LoadDataSet
 
 TFloat CBDataFromFile::Get(TFloat time, TInt index) {
-    TFloat t = time - startTime_;
+    TFloat t = time - startTime_; // t is set to 0 here
     
-    if ((t < 0) || (index >= dataBegin_.size())) {
+    if ((t < 0) || (index >= dataBegin_.size())) { // dataBegin has the "correct" size of 1710
         return 0.0;
     } else {
-        t = fmod(t, period_);
+        t = fmod(t, period_); // t becomes a NaN exactly at this point
+        // fmod(x, y) calculates x/y -> since period_=0 t becomes a NaN
         
         if ((t <= timeDataBegin_) || (t > timeDataEnd_) )
             LoadDataSet(t);
