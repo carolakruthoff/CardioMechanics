@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
+
 if( DEFINED ENV{kaRootDir} )
     set( kaRootDir $ENV{kaRootDir} )
 else ( )
