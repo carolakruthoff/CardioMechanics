@@ -46,13 +46,11 @@ void CBSolver::InitParameters() {
     numNonZeros_ = parameters_->Get<TInt>("Solver.NonZeros", 2000);
     timing_.Init(*parameters_);
     exportSNESMatrix_ = parameters_->Get<bool>("Solver.ExportSNESMatrix", false);
-    
     // snesStepsFilename_ = parameters_->Get<std::string>("Solver.SNES.Export","");  // unused
     
     if (timing_.GetMaxSimTimeStep() > model_->GetExporter()->GetExportTimeStep()) {
         DCCtrl::print
-        <<
-        "CBSolver::InitSolverOptions(): Max simulation time step is bigger than the output time step, Does this make sense ? I don't think so ... "
+        << "CBSolver::InitSolverOptions(): Max simulation time step is bigger than the output time step, Does this make sense ? I don't think so ... "
         << "Will set export time step to match max simulation time step " << timing_.GetMaxSimTimeStep() << "."
         << std::endl;
         model_->GetExporter()->SetExportTimeStep(timing_.GetMaxSimTimeStep());
@@ -234,7 +232,6 @@ void CBSolver::Init(ParameterMap *parameters, CBModel *model) {
     MPI_Barrier(Petsc::Comm());
     
     InitFormulation();
-    
     // DCCtrl::print << "\xd\t\tInitializing: Active stress data ...                                                                                ";
     // InitActiveStressData();
     // InitActiveStress();
