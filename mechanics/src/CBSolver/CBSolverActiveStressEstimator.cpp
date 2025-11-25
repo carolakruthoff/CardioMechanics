@@ -277,7 +277,7 @@ void CBSolverActiveStressEstimator::UpdateMasterNodesOfInterest() {
 } // CBSolverActiveStressEstimator::UpdateMasterNodesOfInterest
 
 /// eki: the actual optimization / parameter estimation step, calls estimator + solver + processes the results
-CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time) {
+CBStatus CBSolverActiveStressEstimator::SolverStep(PetscScalar time, bool forceJacobianAndDampingRecalculation) {
   // vector allocation
   Vec prevNodes;
   Vec target;
