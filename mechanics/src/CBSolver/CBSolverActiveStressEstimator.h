@@ -25,9 +25,11 @@ public:
     
     CBSolverActiveStressEstimator() : CBSolverEquilibrium() {}
     virtual std::string GetType() override {return("Active Stress Estimator (Static)"); }
-    CBStatus SolverStep(PetscScalar time);
+    // CBStatus SolverStep(PetscScalar time);
     virtual void Init(ParameterMap* parameters, CBModel* model) override;
 protected:
+    // ck620
+    CBStatus SolverStep(PetscScalar time, bool forceJacobianAndDampingRecalculation = false);
 private:
     void UpdateMasterNodesOfInterest();
     CBStatus EstimatorStep(PetscScalar time,int step);
