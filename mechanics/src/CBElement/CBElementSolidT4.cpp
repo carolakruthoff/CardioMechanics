@@ -260,7 +260,6 @@ TFloat *CBElementSolidT4::GetShapeFunctionsDerivatives() {
 TFloat CBElementSolidT4::GetDeformationEnergy() {
     TFloat e;
     Matrix3<TFloat> f;
-    
     GetDeformationTensor(f);
     Base::material_->GetConstitutiveModel()->CalcEnergy(f, e);
     return initialVolume_ * e;
@@ -636,4 +635,92 @@ CBStatus CBElementSolidT4::GetDeformationTensorAtQuadraturePoints(Matrix3<TFloat
     }
     
     return CBStatus::SUCCESS;
+}
+
+// ck620/ lt762
+CBStatus CBElementSolidT4::CalcNodalForcesActiveStressJacobian(int elementIndex) // Calculate how the nodal forces depend on the active stress -> needed for the inverse problem of cardiac mechanics
+{
+    CBStatus rc;
+    TFloat   nodesCoords[12];
+    bool     boundaryConditions[12];
+    TInt     nodesCoordsIndices[12];
+
+    Matrix3<TFloat> a;
+    Matrix3<TFloat> aTest;
+
+    // ek717: to be commented:
+    Base::adapter_->GetActiveStressTensor(localIndex_, aTest);
+
+    a(0,0) = GetTensionModel()->GetActiveTension();
+    GetNodesCoordsIndices(nodesCoordsIndices);
+
+    Base::adapter_->GetNodesCoords(12, nodesCoordsIndices, nodesCoords);
+    Base::adapter_->GetNodesComponentsBoundaryConditions(12, nodesCoordsIndices, boundaryConditions);
+
+    TFloat forces[12];
+
+    rc = CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, forces);
+
+    if(rc != CBStatus::SUCCESS)
+        return(rc);
+
+    TFloat epsilon = Base::adapter_->GetFiniteDifferencesEpsilon();
+
+    // Calculate forces jacobian
+    TFloat forcesActiveStressJacobian[12];
+
+    TInt indices[12];
+    memcpy(indices, nodesCoordsIndices, 12*sizeof(TInt));
+
+    for(int i = 0; i < 12; i++)
+        if(boundaryConditions[i] == true)
+            indices[i] = -1;
+
+    epsilon = 1;
+
+
+    Base::adapter_->GetNodesCoords(12, nodesCoordsIndices, nodesCoords);
+
+    // Base::adapter_->GetActiveStressTensor(localIndex_, a);
+    // a(0,0) += epsilon;
+
+    GetTensionModel()->SetActiveTensionAtQuadraturePoint(0, a(0,0) + epsilon);
+
+    TFloat t[12];
+    CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t);
+
+    // Base::adapter_->GetActiveStressTensor(localIndex_, a);
+
+    // ek717: statt GetActiveStressTensor -> Get active tension von kraftmodel?
+    // a(0,0) -= epsilon;
+
+    GetTensionModel()->SetActiveTensionAtQuadraturePoint(0, a(0,0) - epsilon);
+    TFloat t2[12];
+    CalcNodalForcesHelperFunction(nodesCoords, boundaryConditions, &a, t2);
+
+    for(int k = 0; k < 4; k++)
+    {
+        if(boundaryConditions[3*k] == 0)
+            forcesActiveStressJacobian[3*k] = (t[3*k] - t2[3*k]) / (2*epsilon);
+        else
+            forcesActiveStressJacobian[3*k] = 0;
+
+        if(boundaryConditions[3*k+1] == 0)
+            forcesActiveStressJacobian[3*k+1] = (t[3*k+1] - t2[3*k+1]) / (2*epsilon);
+        else
+            forcesActiveStressJacobian[3*k+1] = 0;
+
+        if(boundaryConditions[3*k+2] == 0)
+            forcesActiveStressJacobian[3*k+2] = (t[3*k+2] - t2[3*k+2]) / (2*epsilon);
+        else
+            forcesActiveStressJacobian[3*k+2] = 0;
+    }
+
+     GetTensionModel()->SetActiveTensionAtQuadraturePoint(0, a(0,0));
+
+    if(elementIndex == -1)
+        elementIndex = localIndex_;
+
+    Base::adapter_->AddNodalForcesActiveStressJacobianEntries(12, indices, 1, &elementIndex, forcesActiveStressJacobian);
+    return(CBStatus::SUCCESS);
 }
