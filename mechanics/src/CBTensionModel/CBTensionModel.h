@@ -69,17 +69,14 @@ public:
     /// helper function: perform one explicit euler step
     static double ExplicitEulerStep(double u, double dt, std::function<double(double)> f) {
         double k1 = f(u);
-        
         return u + dt*k1;
     }
-    
     /// helper function: performs one 4th order Runge-Kutta step (TODO: something similar exists in CBCircModel.hpp ::Integrate() ? )
     static double RungeKutta4Step(double u, double dt, std::function<double(double)> f) {
         double k1 = f(u);
         double k2 = f(u+dt/2.*k1);
         double k3 = f(u+dt/2.*k2);
         double k4 = f(u + dt*k3);
-        
         return u + dt*(k1 + 2.*k2 + 2.*k3 + k4)/6.;
     }
     
@@ -96,6 +93,10 @@ public:
     /// Method to retrieve final beginning of the activation
     virtual TFloat GetActivationTime() {
         return activationTime_;
+    }
+
+    virtual TFloat GetActiveTension() {
+        return 0.0;
     }
     
 protected:
