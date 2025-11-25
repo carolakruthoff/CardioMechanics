@@ -21,7 +21,6 @@ class CBSolverActiveStressTensorEstimator : public CBSolverEquilibrium
 
 {
 public:
-    
     CBSolverActiveStressTensorEstimator() : CBSolverEquilibrium() {}
     std::string GetType() override {return("Active Stress Tensor Estimator (Static)"); }
     CBStatus SolverStep(PetscScalar time);
@@ -59,6 +58,8 @@ private:
     Vec dx_;
     Vec dist_;
     Vec tmpNodes_;
+
+    Vec activeStressVec_; // for UpdateActiveStress function
 
     //    Vec lastSolution_;            // -> ti1_
     // TFloat* dTau_ = 0;               // -> ti_

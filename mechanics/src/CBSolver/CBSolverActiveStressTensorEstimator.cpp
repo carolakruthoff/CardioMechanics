@@ -1137,24 +1137,24 @@ void CBSolverActiveStressTensorEstimator::GenerateElementLaplacianFibers() {
 
 
 void CBSolverActiveStressTensorEstimator::UpdateActiveStress(PetscScalar time) {
-  // PetscInt cnt = 0;
-  // if(activeStressData_) {
-  //    for(auto& it : solidElements_) {
-  //
-  // // todo: this should be able to depend dynamically on everything instead of being set just once, similar to the constitutive model
-  //
-  //     activeStressData_->SetTime(time);
-  //     it->GetMaterial()->GetConstitutiveModel()->SetTemplateForce(activeStressData_->Get(it->GetIndex(), it->GetMaterialIndex()));
-  //     // active stress currently gets scaled by the constitutive model, but should rather be in ActiveStressModel
-  //
-  //     // todo: instead of setting this here to zero, it should be remove from CalcNodalForcesHelperFunction in CBElementT4, CBElementT10, (partially done) and so on...
-  //     activeStressTensorComponents_[cnt]        =  activeStressData_->Get(time, it->GetIndex(), it->GetMaterialIndex() );
-  //     activeStressTensorComponentsIndices_[cnt] = it->GetLocalIndex() + activeStressLowerIndex_;
-  //     cnt++;
-  //        }
-  //
-  // VecSetValues(activeStress_, cnt, activeStressTensorComponentsIndices_, activeStressTensorComponents_, INSERT_VALUES);
-  // VecAssemblyBegin(activeStress_);
-  // VecAssemblyEnd(activeStress_);
-  // }
+  PetscInt cnt = 0;
+  if(activeStressData_) {
+     for(auto& it : solidElements_) {
+
+  // todo: this should be able to depend dynamically on everything instead of being set just once, similar to the constitutive model
+
+      activeStressData_->SetTime(time);
+      it->GetMaterial()->GetConstitutiveModel()->SetTemplateForce(activeStressData_->Get(it->GetIndex(), it->GetMaterialIndex()));
+      // active stress currently gets scaled by the constitutive model, but should rather be in ActiveStressModel
+
+      // todo: instead of setting this here to zero, it should be remove from CalcNodalForcesHelperFunction in CBElementT4, CBElementT10, (partially done) and so on...
+      activeStressTensorComponents_[cnt]        =  activeStressData_->Get(time, it->GetIndex(), it->GetMaterialIndex() );
+      activeStressTensorComponentsIndices_[cnt] = it->GetLocalIndex() + activeStressLowerIndex_;
+      cnt++;
+         }
+
+  VecSetValues(activeStressVec_, cnt, activeStressTensorComponentsIndices_, activeStressTensorComponents_, INSERT_VALUES);
+  VecAssemblyBegin(activeStressVec_);
+  VecAssemblyEnd(activeStressVec_);
+  }
 }
