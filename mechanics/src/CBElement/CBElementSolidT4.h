@@ -65,6 +65,9 @@ public:
     static std::vector<double> *conds;
     TFloat *GetShapeFunctionsDerivatives();
     
+    //ck620/lt762
+    CBStatus CalcNodalForcesActiveStressJacobian(int elementIndex = -1);
+
 protected:
     void CalcShapeFunctionsDerivatives();
     void CalcShapeFunctionDerivatives(TFloat l1, TFloat l2, TFloat l3, TFloat l4, TFloat *dNdX,
